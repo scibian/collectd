@@ -1,19 +1,27 @@
 /**
- * oconfig - src/parser.y
- * Copyright (C) 2007,2008  Florian octo Forster <octo at verplant.org>
+ * collectd - src/liboconfig/parser.y
+ * Copyright (C) 2007,2008  Florian Forster
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the
- * Free Software Foundation; only version 2 of the License is applicable.
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
- * more details.
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
  *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ *
+ * Authors:
+ *   Florian Forster <octo at collectd.org>
  */
 
 %{
@@ -28,6 +36,7 @@ static int yyerror (const char *s);
 /* Lexer variables */
 extern int yylineno;
 extern char *yytext;
+extern int yylex (void);
 
 extern oconfig_item_t *ci_root;
 extern char           *c_file;
@@ -199,15 +208,13 @@ statement_list:
 entire_file:
 	statement_list
 	{
-	 ci_root = malloc (sizeof (oconfig_item_t));
-	 memset (ci_root, '\0', sizeof (oconfig_item_t));
+	 ci_root = calloc (1, sizeof (*ci_root));
 	 ci_root->children = $1.statement;
 	 ci_root->children_num = $1.statement_num;
 	}
 	| /* epsilon */
 	{
-	 ci_root = malloc (sizeof (oconfig_item_t));
-	 memset (ci_root, '\0', sizeof (oconfig_item_t));
+	 ci_root = calloc (1, sizeof (*ci_root));
 	 ci_root->children = NULL;
 	 ci_root->children_num = 0;
 	}
@@ -216,7 +223,7 @@ entire_file:
 %%
 static int yyerror (const char *s)
 {
-	char *text;
+	const char *text;
 
 	if (*yytext == '\n')
 		text = "<newline>";
@@ -232,7 +239,6 @@ static char *unquote (const char *orig)
 {
 	char *ret = strdup (orig);
 	int len;
-	int i;
 
 	if (ret == NULL)
 		return (NULL);
@@ -246,7 +252,7 @@ static char *unquote (const char *orig)
 	memmove (ret, ret + 1, len);
 	ret[len] = '\0';
 
-	for (i = 0; i < len; i++)
+	for (int i = 0; i < len; i++)
 	{
 		if (ret[i] == '\\')
 		{

@@ -1,10 +1,16 @@
 ACLOCAL_AMFLAGS = -I libltdl/m4
 
-SUBDIRS = libltdl src bindings .
+SUBDIRS =
 
-INCLUDES = $(LTDLINCL)
+if BUILD_INCLUDED_LTDL
+SUBDIRS += libltdl
+endif
 
-EXTRA_DIST = contrib version-gen.sh
+SUBDIRS += proto src bindings .
+
+AM_CPPFLAGS = $(LTDLINCL)
+
+EXTRA_DIST = contrib version-gen.sh testwrapper.sh
 
 install-exec-hook:
 	$(mkinstalldirs) $(DESTDIR)$(localstatedir)/run

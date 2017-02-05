@@ -1,3 +1,351 @@
+collectd (5.7.1-1.1) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * Drop -ssl -lcrypto from linking (openssl's functionality is not used by
+    collectd). Add drop_lssl_lcrypto_from_linking.patch (Closes: #852924).
+
+ -- Sebastian Andrzej Siewior <sebastian@breakpoint.cc>  Sun, 05 Feb 2017 20:40:33 +0100
+
+collectd (5.7.1-1) unstable; urgency=medium
+
+  * New upstream release.
+  * debian/patches:
+    - drop dpdkstat-portable-format-string.patch, included upstream.
+    - add mqtt_resource_leak.patch, fixing a connection leak.
+    - add mqtt_invalid_symbols.patch, stripping out invalid characters from
+      MQTT topic names.
+    - add dpdkstat_goto_label.patch, fixing a small mistake which prevented
+      the dpdkstat from building.
+
+ -- Marc Fournier <marc@bl.uem.li>  Mon, 23 Jan 2017 20:45:34 +0100
+
+collectd (5.7.0-3) unstable; urgency=medium
+
+  * debian/control: Skip libdpdk-dev build dependency on non-Intel
+    architectures.
+
+ -- Marc Fournier <marc@bl.uem.li>  Sun, 18 Dec 2016 22:08:27 +0100
+
+collectd (5.7.0-2) unstable; urgency=medium
+
+  * debian/patches: add dpdkstat-portable-format-string.patch, fixing the
+    build on i386.
+  * debian/rules: Disable dpdkstat plugin on non-Intel architectures.
+
+ -- Marc Fournier <marc@bl.uem.li>  Sun, 18 Dec 2016 17:05:10 +0100
+
+collectd (5.7.0-1) unstable; urgency=medium
+
+  * New upstream release.
+    New plugins:
+    - DPDK interface statistics: dpdkstat
+    - Report the number of used and free hugepages: hugepages (Linux-specific)
+    - Intel Resource Director Technology statistics: intel_rdt (disabled in
+      Debian because of missing dependencies)
+    - Publish values in a Prometheus-compatible format: write_prometheus
+  * debian/rules:
+    - Disable hugepages plugin on non-Linux.
+    - Disable the intel_rdt plugin.
+  * debian/control:
+    - Build-depend on libdpdk-dev: Needed by the new dpdkstat plugin.
+    - Build-depend on libmicrohttpd-dev: Needed by the new write_prometheus
+      plugin.
+    - Suggests icinga instead of nagios packages (nagios3 removed from
+      Debian. Closes: #846859). Thanks to Bas Couwenberg.
+  * debian/patches:
+    - Removed configure_find_lc_all.patch; included upstream.
+    - Added nagios-debian-paths.patch, to use nagios-nrpe-server &
+      monitoring-plugin paths for Debian. Thanks to Bas Couwenberg.
+
+ -- Marc Fournier <marc@bl.uem.li>  Fri, 16 Dec 2016 22:11:21 +0100
+
+collectd (5.6.1-2) unstable; urgency=medium
+
+  * debian/control:
+    - Add libdevstat-dev and libgeom-dev to kfreebsd build-deps, as they're
+      needed by the disk plugin. Thanks to Florian Forster for pointing this
+      out.
+    - Update "Vcs-Git" and "Vcs-Browser" fields to point to GitHub repo.
+    - Changed build-dependency libmysqlclient-dev to
+      default-libmysqlclient-dev, and mysql-server to default-mysql-server.
+    - collectd-core.deb: Add "Depends" on lsb-base, as /etc/init.d/collectd
+      requires /lib/lsb/init-functions.
+    - Remove "Multi-Arch: same" from libcollectdclient-dev, until the package
+      gets reworked to really be multi-arch ready.
+  * debian/control, debian/compat:
+    - Bump debhelper compat version to 9.
+
+ -- Marc Fournier <marc@bl.uem.li>  Tue, 01 Nov 2016 07:32:47 +0100
+
+collectd (5.6.1-1) unstable; urgency=medium
+
+  * New upstream release.
+    - write_graphite plugin is no longer linked against libyajl. Thanks to
+      Shish for reporting this (Closes: #839771).
+    - rrdcached plugin now reconnects to daemon. Thanks to Matthias Urlichs
+      for reporting this (Closes: #657877).
+  * debian/control:
+    - Add "Multi-Arch: same" to libcollectdclient-dev, as suggested by the
+      Multiarch hinter.
+  * debian/patches:
+    - Update configure_find_lc_all.patch to reliably pick the same JVM for
+      each build, making the process reproducible.
+  * debian/rules:
+    - Disable building the barometer, drbd, fhcount and ipc plugins on
+      kfreebsd architectures, as they are Linux-only.
+    - Run the test suite using dh_auto_test.
+
+ -- Marc Fournier <marc@bl.uem.li>  Sun, 09 Oct 2016 21:42:29 +0200
+
+collectd (5.6.0-1) unstable; urgency=medium
+
+  * New upstream release.
+    - The disk plugin now supports FreeBSD; enable it in debian/rules.
+    - Suppress spammy debug messages; thanks to Antonio Russo for reporting
+      this (Closes: #797687).
+    New plugins:
+    - Chrony daemon statistics: chrony
+    - CPU sleep: Time spent in suspend: cpusleep (Linux-specific)
+    - Monitor gps related data through gpsd: gps
+    - Send or receive values over the network using the gRPC framework: grpc
+      (disabled in Debian because of missing dependencies)
+    - Lua interpreter embedded into collectd: lua
+    - Publishes and subscribes to MQTT topics: mqtt
+    - Submit notifications as passive check results to a local nagios
+      instance: notify_nagios
+    - XEN Hypervisor CPU stats: xencpu
+    - Solaris zone metrics: zone (disabled in Debian; Solaris specific)
+  * debian/rules:
+    - Disable cpusleep plugin on non-Linux.
+    - Disable xencpu plugin except on amd64, arm64, armhf, and i386.
+    - Disable the zone plugin.
+    - Do not cripple include files in collectd-dev when patching them; thanks
+      to Scott Talbert for reporting this (Closes: #827759).
+  * debian/control:
+    - Build-depend on libgps-dev: Needed by the new gps plugin.
+    - Build-depend on liblua5.3-dev: Needed by the new lua plugin.
+    - Build-depend on libmosquitto-dev: Needed by the new mqtt plugin.
+    - Build-depend on libxen-dev [amd64 arm64 armhf i386]: Needed by the new
+      xencpu plugin.
+    - Build-depend on libriemann-client-dev, riemann-c-client: Now needed by
+      the riemann plugin.
+  * debian/patches:
+    - Removed bts832577-gcry-control.patch; included upstream.
+    - Removed gcc6.patch; included upstream.
+
+ -- Sebastian Harl <tokkee@debian.org>  Sat, 24 Sep 2016 15:19:10 +0200
+
+collectd (5.5.2-2) unstable; urgency=low
+
+  * debian/changelog:
+    - Set urgency back to low.
+  * debian/control:
+    - Update GCrypt's package name to libgcrypt20-dev.
+  * debian/patches:
+    - Added configure_find_lc_all.patch: forcing locale in configure script
+      will hopefully fix build reproducibility on non-amd64 plafroms.
+
+ -- Marc Fournier <marc@bl.uem.li>  Wed, 21 Sep 2016 14:01:55 +0200
+
+collectd (5.5.2-1) unstable; urgency=high
+
+  * New upstream release.
+    - Fix heap overflow in the network plugin. Emilien Gaspar has identified a
+      heap overflow in parse_packet(), the function used by the network plugin
+      to parse incoming network packets. Thanks to Florian Forster for
+      reporting the bug in Debian. (Closes: #832507, CVE-2016-6254)
+    - Fix improper usage of gcry_control. A team of security researchers at
+      Columbia University and the University of Virginia discovered that
+      GCrypt's gcry_control is sometimes called without checking its return
+      value for an error. This may cause the program to be initialized without
+      the desired, secure settings. (Closes: #832577)
+  * debian/patches:
+    - bts832577-gcry-control.patch: Update for 5.5.2. Mostly part of the new
+      upstream release, except for: Don't abort() if gcrypt initialization
+      failed.
+    - Drop bts823012_librrd8.patch; merged upstream.
+  * Rebuild with linux-libc-dev >= 4.6 (now in testing and unstable) to
+    accommodate a change to rtnl_link_stats64. Thanks to Gábor Gombás for
+    reporting this (Closes: #829634).
+
+ -- Sebastian Harl <tokkee@debian.org>  Fri, 29 Jul 2016 00:02:11 +0200
+
+collectd (5.5.1-5) unstable; urgency=low
+
+  * debian/control, debian/rules:
+    - Disable the sigrok plugin on non-Linux; restrict build dependency to
+      linux-any; thanks to Andreas Beckmann for reporting this
+      (Closes: #825606).
+  * debian/rules:
+    - Fix failure to build twice in a row introduced by dh_autoreconf_clean;
+      drop the separate config.status target and, hence, a dependency on the
+      configure script.
+  * debian/patches/:
+    - Added gcc6.patch: Fix FTBFS with GCC 6; thanks to Lucas Nussbaum for
+      reporting this (Closes: #831194).
+
+ -- Sebastian Harl <tokkee@debian.org>  Sun, 17 Jul 2016 23:30:33 +0200
+
+collectd (5.5.1-4) unstable; urgency=medium
+
+  * debian/control:
+    - Add dh-autoreconf to Build-Depends.
+    - Update standards-version to 3.9.8 (no changes).
+
+ -- Marc Fournier <marc@bl.uem.li>  Tue, 31 May 2016 18:16:43 +0200
+
+collectd (5.5.1-3) unstable; urgency=medium
+
+  * Re-enable gmond plugin. Thanks to Michael Tautschnig and Jean-Michel
+    Vourgère for fixing #812462.
+  * debian/patches:
+    - Add bts823012_librrd8.patch. Properly detect thread safety with librrd8.
+      Thanks to Jean-Michel Vourgère for the patch (Closes: #823012).
+  * debian/collectd.conf:
+    - Add missing example blocks in main configuration file (Closes: #806196).
+
+ -- Marc Fournier <marc@bl.uem.li>  Wed, 25 May 2016 23:14:14 +0200
+
+collectd (5.5.1-2) unstable; urgency=medium
+
+  * Disable the gmond plugin for now. Ganglia is not available in testing
+    (cf. #812462). Thanks to Santiago Vila for reporting this
+    (Closes: #819241).
+  * Update standards-version to 3.9.7 (no changes).
+
+ -- Sebastian Harl <tokkee@debian.org>  Sat, 02 Apr 2016 11:02:49 +0200
+
+collectd (5.5.1-1) unstable; urgency=medium
+
+  * New upstream release:
+    - The "LC_NUMERIC" locale is now forced to "C", preventing problems on
+      environments where the locale uses a comma as decimal separator. Thanks
+      to Hubert Jarosz for reporting this (Closes: #799289).
+    - Fixed FTBFS with GCC 6.0; thanks to Martin Michlmayr for reporting this
+      (Closes: #811580).
+  * debian/patches:
+    - Removed bts802249_varnish_41.patch; implemented upstream.
+  * debian/collectd.conf:
+    - Sync with upstream changes since 5.5.0.
+
+ -- Marc Fournier <marc@bl.uem.li>  Fri, 22 Jan 2016 16:53:49 +0100
+
+collectd (5.5.0-4) unstable; urgency=medium
+
+  * debian/collectd-core.overrides:
+    - Update 'binary-or-shlib-defines-rpath' lintian override.
+  * debian/rules:
+    - Strip out non-deterministic bits out of generated jar files.
+    - Remove RTLD_GLOBAL workaround, which was fixed upstream.
+  * debian/patches:
+    - Add bts802249_varnish_41.patch (Closes: #802249)
+
+ -- Marc Fournier <marc@bl.uem.li>  Mon, 16 Nov 2015 21:03:31 +0100
+
+collectd (5.5.0-3) unstable; urgency=medium
+
+  * debian/rules, debian/control:
+    - Avoid hiding compiler options at build time, allowing the buildd log
+      scanner to do it's job.
+    - Disable smart plugin on non-linux platforms, due to missing
+      libatasmart-dev build-dependency.
+  * debian/collectd-core.overrides:
+    - Update 'capitalization-error-in-description' lintian override.
+  * debian/rules, debian/collectd-core.collectd.service:
+    - Rename systemd service file to collectd-core.collectd.service, to honour
+      debhelper's naming convention.
+  * debian/collectd-core.collectd.service:
+    - Check for configuration file presence before starting the daemon.
+    - Check for configuration file validity before starting the daemon.
+  * debian/control, debian/changelog:
+    - Update my email address to match identity of current GPG key.
+
+ -- Marc Fournier <marc@bl.uem.li>  Sun, 13 Sep 2015 21:42:53 +0200
+
+collectd (5.5.0-2) unstable; urgency=low
+
+  * debian/rules:
+    - Disable the turbostat plugin on !amd64,!i386; it's Intel-hardware
+      specific.
+
+ -- Sebastian Harl <tokkee@debian.org>  Sun, 23 Aug 2015 15:35:26 +0200
+
+collectd (5.5.0-1) unstable; urgency=medium
+
+  [ Marc Fournier ]
+  * New upstream release:
+    - Battery plugin now prefers sysfs over (the deprecated) procfs for
+      reading values; thanks to Witold Baryluk for reporting this
+      (Closes: #630337).
+    - The configuration supports unquoted IPv6 addresses now; thanks to Geoff
+      Crompton for reporting this (Closes: #632713).
+    - Fixed a FTBFS using clang; thanks to Arthur Marble for reporting this
+      and providing a patch (Closes: #758481).
+    - collection.cgi now supports the df_complex types; thanks to Joel Franco
+      Guzmán for reporting this (Closes: #739625).
+    - Fixed an off-by-one error in the AVL tree implementation that broke
+      setups using only one threshold definition; thanks to Alexander Golovko
+      for reporting this (Closes: #754230).
+    - The disk plugin now (optionally) supports instance names based on a udev
+      attribute; thanks to Trent W. Buck for reporting this (Closes: #632936).
+  * debian/patches:
+    - Removed bts559801_plugin_find_fix.dpatch; merged upstream.
+    - Removed bts747093_lvm_segfault.dpatch; merged upstream.
+    - Removed bts750440_config_segfault.dpatch; merged upstream.
+    - Removed bts770681_riemann_ack.dpatch; merged upstream.
+    - Removed bts770683_curl_init.dpatch; merged upstream.
+    - Removed bts770688_snmp_memleak.dpatch; merged upstream.
+    - Removed bts770690_java_jni_thread_detach.dpatch; merged upstream.
+    - Removed bts770693_timestamps.dpatch; merged upstream.
+    - Removed bts770694_loglevel.dpatch; merged upstream.
+    - Removed collection.cgi.dpatch; merged upstream.
+    - Removed myplugin_api.dpatch; merged upstream.
+  * debian/rules, debian/collectd-dev.install, myplugin_includes.dpatch:
+    - Update path to header files moved to daemon/ subdirectory upstream.
+  * debian/rules, debian/control:
+    - Enable redis, write_redis plugins and add Build-depend on
+      libhiredis-dev (previous versions depended on credis which wasn't
+      packaged in Debian).
+    - Enable sigrok and uncomment Build-depend on libsigrok-dev.
+    - Re-enable varnish and uncomment Build-depend on libvarnishapi-dev
+      (support for varnish 4.x was added upstream).
+    - Enable zfs_arc (support for ZFS on linux was added upstream).
+    - Add Build-depend on libatasmart-dev (required to build new smart
+      plugin).
+    - Add Build-depend on libcap-dev (used to avoid running new turbostat
+      plugin as root on Linux).
+    - Add Build-depend on libi2c-dev (required to build new barometer plugin).
+    - Add Build-depend on libldap2-dev (required to build new openldap
+      plugin).
+    - Add Build-depend on librdkafka-dev (required to build new write_kafka
+      plugin).
+    - Add Build-depend on libudev-dev (used by disk plugin to enable
+      udev-based device renaming on Linux) (Closes: #588153, #632936).
+  * debian/control, debian/rules, debian/collectd.service:
+    - Add systemd service file (Closes: #762586)
+  * debian/libcollectdclient1.symbols
+    - Updated for 5.5.
+
+  [ Sebastian Harl ]
+  * debian/control:
+    - Add virtual-mysql-server as an alternative to the mysql-server suggests;
+      thanks to Otto Kekäläinen for reporting this (Closes: 781980).
+    - Add Marc to uploaders.
+    - Update standards-version to 3.9.6 (no changes).
+  * debian/po:
+    - Update Dutch debconf template translation; thanks to Frans Spiesschaert
+      (Closes: #763783).
+  * Convert the package to "3.0 (quilt)" format; thanks to YunQiang Su for an
+    initial patch (Closes: #688719):
+    - Build-depend on debhelper (>= 7.0.50~) and drop dpatch.
+    - Renamed patch files from *.dpatch to *.patch and drop the dpatch header.
+    - Changed debian/patches/00list to debian/patches/series.
+    - Drop all patch operations from debian/rules.
+  * debian/collectd-core.overrides:
+    - Update the JRE path for the rpath override.
+
+ -- Marc Fournier <marc.fournier@camptocamp.com>  Fri, 21 Aug 2015 13:29:17 +0200
+
 collectd (5.4.1-6+deb8u1) jessie-security; urgency=high
 
   * debian/patches/CVE-2016-6254.dpatch: Fix heap overflow in the network
@@ -299,6 +647,22 @@ collectd (5.1.0-3.1) unstable; urgency=low
     (Closes: #683525)
 
  -- gregor herrmann <gregoa@debian.org>  Sun, 26 May 2013 00:52:37 +0200
+
+collectd (5.1.0-3+deb7u1) wheezy-security; urgency=high
+
+  * debian/patches/CVE-2016-6254.dpatch: Fix heap overflow in the network
+    plugin. Emilien Gaspar has identified a heap overflow in parse_packet(),
+    the function used by the network plugin to parse incoming network packets.
+    Thanks to Florian Forster for reporting the bug in Debian.
+    (Closes: #832507, CVE-2016-6254)
+  * debian/patches/bts832577-gcry-control.dpatch: Fix improper usage of
+    gcry_control. A team of security researchers at Columbia University and
+    the University of Virginia discovered that GCrypt's gcry_control is
+    sometimes called without checking its return value for an error. This may
+    cause the program to be initialized without the desired, secure settings.
+    (Closes: #832577)
+
+ -- Sebastian Harl <tokkee@debian.org>  Thu, 28 Jul 2016 20:52:12 +0200
 
 collectd (5.1.0-3) unstable; urgency=low
 
@@ -1446,7 +1810,7 @@ collectd (3.9.4+debian-1) unstable; urgency=low
   * Initial release (Closes: #373008).
   * Removed upstream's debian/ directory from .orig.tar.gz.
   * getifaddrs.dpatch: Patching src/traffic.c to read data from /proc instead
-    of using getifaddrs(). getifaddrs() does not seem to work correctly on 
+    of using getifaddrs(). getifaddrs() does not seem to work correctly on
     AMD64.
 
  -- Sebastian Harl <sh@tokkee.org>  Fri,  7 Jul 2006 15:49:42 +0200
