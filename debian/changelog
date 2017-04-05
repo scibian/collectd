@@ -1,3 +1,56 @@
+collectd (5.4.1-6calibre9+7) calibre9; urgency=medium
+
+  * Rebuild with libslurm31.
+
+ -- Rémi Palancher <remi-externe.palancher@edf.fr>  Wed, 05 Apr 2017 16:27:55 +0200
+
+collectd (5.4.1-6calibre9+6) calibre9; urgency=medium
+
+  * Rebuild with libslurm30.
+
+ -- Rémi Palancher <remi-externe.palancher@edf.fr>  Tue, 11 Oct 2016 16:16:26 +0200
+
+collectd (5.4.1-6calibre9+5) calibre9; urgency=medium
+
+  * Rebuild with new versioning convention.
+
+ -- Rémi Palancher <remi-externe.palancher@edf.fr>  Fri, 15 Apr 2016 14:08:47 +0200
+
+collectd (5.4.1-6+c9+4) calibre9; urgency=low
+
+  * Remove many opts Build-deps in order to remove many deps then
+
+ -- Rémi Palancher <remi-externe.palancher@edf.fr>  Wed, 23 Sep 2015 10:26:43 +0200
+
+collectd (5.4.1-6+c9+3) calibre9; urgency=medium
+
+  * Override lintian error about dpatch
+  * Add missing Build-dep on automake and libtool
+  * Add autoconf to d/rules
+
+ -- Rémi Palancher <remi-externe.palancher@edf.fr>  Mon, 21 Sep 2015 16:13:25 +0200
+
+collectd (5.4.1-6+c9+2) calibre9; urgency=medium
+
+  * Update delay-first-read patch
+  * Update slurmd-plugin patch
+  * Update slurmctld-plugin patch
+  * Add SyncNodesReads in example configuration file
+
+ -- Rémi Palancher <remi-externe.palancher@edf.fr>  Wed, 09 Sep 2015 18:46:18 +0200
+
+collectd (5.4.1-6+c9+1) calibre9; urgency=medium
+
+  * Non-maintainer upload.
+  * Add new slurmd plugin patch
+  * Add new slurmctld plugin patch
+  * Patch to delay first read to next interval
+  * Patch to fix version-gen.sh script with GBP repo
+  * New patch to add count type in types.db
+  * Add examples of LoadPlugin for slurm related plugins
+
+ -- Rémi Palancher <remi-externe.palancher@edf.fr>  Mon, 03 Aug 2015 11:41:06 +0200
+
 collectd (5.4.1-6) unstable; urgency=medium
 
   * debian/patches:
