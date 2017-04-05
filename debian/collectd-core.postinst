@@ -18,6 +18,7 @@ set -e
 # the debian-policy package
 
 . /usr/share/debconf/confmodule
+chmod 755 /usr/lib/collectd/utils/exec-cuda.sh
 
 case "$1" in
     configure)

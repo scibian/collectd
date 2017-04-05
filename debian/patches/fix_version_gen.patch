@@ -1,0 +1,18 @@
+#! /bin/sh /usr/share/dpatch/dpatch-run
+## fix-version-gen.dpatch by Rémi Palancher <remi@rezib.org>
+##
+## DP: fix version-gen.sh script to handle GBP repo
+
+--- a/version-gen.sh	2015-08-03 17:33:01.708000000 +0200
++++ b/version-gen.sh	2015-08-03 17:34:40.704000000 +0200
+@@ -2,9 +2,9 @@
+ 
+ DEFAULT_VERSION="5.7.1.git"
+ 
+ if [ -d .git ]; then
+-	VERSION="`git describe --dirty=+ --abbrev=7 2> /dev/null | grep collectd | sed -e 's/^collectd-//' -e 's/-/./g'`"
++	VERSION="`git describe --dirty=+ --abbrev=7 2> /dev/null | grep collectd | sed -e 's/^\(collectd-\|debian\/\)//' -e 's/-/./g'`"
+ fi
+ 
+ if test -z "$VERSION"; then
+ 	VERSION="$DEFAULT_VERSION"

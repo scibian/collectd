@@ -5,64 +5,18 @@ Maintainer: Sebastian Harl <tokkee@debian.org>
 Uploaders: Marc Fournier <marc@bl.uem.li>
 Build-Depends: debhelper (>= 9.20120909~), dpkg-dev (>= 1.14.10), po-debconf, dh-systemd (>= 1.5), dh-strip-nondeterminism, dh-autoreconf,
  bison, flex, autotools-dev, libltdl-dev, pkg-config,
- default-libmysqlclient-dev,
  iptables-dev (>= 1.4.3.2-2) [linux-any],
  javahelper,
  kfreebsd-kernel-headers [kfreebsd-any],
- libatasmart-dev [linux-any],
- libcap-dev [linux-any],
- libcurl4-gnutls-dev (>= 7.18.2-5) | libcurl4-gnutls-dev (<= 7.18.2-1) | libcurl3-gnutls-dev,
- libdevstat-dev [kfreebsd-any],
- libdbi0-dev,
- libdpdk-dev [amd64 i386],
- libesmtp-dev,
- libganglia1-dev (>= 3) [linux-any],
- libgeom-dev [kfreebsd-any],
  libgcrypt20-dev,
  libglib2.0-dev,
- libgps-dev,
- libhiredis-dev,
- libi2c-dev,
  libkvm-dev [kfreebsd-any],
  libldap2-dev,
  liblua5.3-dev,
  liblvm2-dev [linux-any],
- libmemcached-dev,
- libmicrohttpd-dev,
- libmodbus-dev,
- libmosquitto-dev,
  libmnl-dev [linux-any],
- libnotify-dev,
- libopenipmi-dev,
- liboping-dev (>= 0.3.3),
- libow-dev,
- libpcap0.8-dev | libpcap-dev,
- libperl-dev,
- libpq-dev,
- libprotobuf-c-dev,
- librabbitmq-dev,
- librdkafka-dev,
- libriemann-client-dev (>= 1.6.0),
- librrd-dev (>= 1.4~),
- libsensors4-dev [linux-any],
- libsigrok-dev (>= 0.2~) [linux-any],
-# libsnmp-dev (>= 5.4.2.1~dfsg-4~) | (libsnmp-dev & perl (<< 5.10.1~rc2-1~))
- libsnmp-dev (>= 5.4.2.1~dfsg-4~) | libsnmp-dev | libsnmp9-dev,
- libsnmp-dev (>= 5.4.2.1~dfsg-4~) | perl (<< 5.10.1~rc2-1~),
- libtokyocabinet-dev [linux-any],
- libtokyotyrant-dev [linux-any],
- libudev-dev [linux-any],
- libupsclient-dev | libupsclient1-dev,
- libvarnishapi-dev,
- libvirt-dev (>= 0.4.0-6) [linux-any],
- libxen-dev [amd64 arm64 armhf i386],
- libxml2-dev,
- libyajl-dev,
+ libslurm-dev,
  linux-libc-dev (>= 2.6.25-4) [linux-any] | linux-libc-dev (<< 2.6.25-1) [linux-any],
- default-jdk [!hppa !sparc !kfreebsd-i386 !kfreebsd-amd64],
- protobuf-c-compiler,
- python-dev,
- riemann-c-client
 Build-Conflicts: libpthread-dev, libhal-dev
 Standards-Version: 3.9.8
 Homepage: https://collectd.org/
@@ -72,7 +26,6 @@ Vcs-Browser: https://github.com/collectd/pkg-debian.git
 Package: collectd-core
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, lsb-base
-Recommends: perl, rrdtool
 Suggests: collectd-dev,
 # collection.cgi / collection3 dependencies
  librrds-perl, liburi-perl, libhtml-parser-perl, libregexp-common-perl,
@@ -228,7 +181,7 @@ Package: collectd
 Architecture: any
 Depends: collectd-core (>= ${source:Version}), collectd-core (<< 6~),
  ${shlibs:Depends}, ${misc:Depends}
-Recommends: ${shlibs:Recommends}, default-jre-headless
+Recommends: ${shlibs:Recommends}
 Description: statistics collection and monitoring daemon
  collectd is a small daemon which collects system information periodically and
  provides mechanisms to monitor and store the values in a variety of ways.
