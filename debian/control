@@ -1,7 +1,7 @@
 Source: collectd
 Section: utils
 Priority: optional
-Maintainer: Sebastian Harl <tokkee@debian.org>
+Maintainer: Scibian Project <packaging@scibian.org>
 Build-Depends: debhelper (>= 5), dpkg-dev (>= 1.14.10), po-debconf, dpatch,
  bison, flex, autotools-dev, libltdl-dev, pkg-config, automake, libtool,
  iptables-dev (>= 1.4.3.2-2) [linux-any],
@@ -17,8 +17,8 @@ Build-Depends: debhelper (>= 5), dpkg-dev (>= 1.14.10), po-debconf, dpatch,
 Build-Conflicts: libpthread-dev, libhal-dev
 Standards-Version: 3.9.5
 Homepage: http://collectd.org/
-Vcs-Git: git://git.tokkee.org/pkg-collectd.git
-Vcs-Browser: http://git.tokkee.org/?p=pkg-collectd.git
+Vcs-Git: https://github.com/scibian/collectd.git
+Vcs-Browser: https://github.com/scibian/collectd
 
 Package: collectd-core
 Architecture: any
