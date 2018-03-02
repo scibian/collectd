@@ -61,7 +61,7 @@ index 1f4ccf8..f466db2 100644
  #</Plugin>
  
 +#<Plugin slurmd>
-+#  CgroupMountPoint "/cgroup"
++#  CgroupMountPoint "/sys/fs/cgroup"
 +#  IgnoreAbsentCpuset false
 +#</Plugin>
 +
@@ -84,7 +84,7 @@ index 978c1c5..81c01f1 100644
 +B<Synopsis:>
 +
 +  <Plugin slurmd>
-+      CgroupMountPoint "/cgroup"
++      CgroupMountPoint "/sys/fs/cgroup"
 +      IgnoreAbsentCpuset false
 +  </Plugin>
 +
@@ -110,7 +110,7 @@ index 978c1c5..81c01f1 100644
 +=item B<SlurmdNodeName> I<NodeName>
 +
 +Slurm will create cgroups under the directory I<cpuset/slurm> in
-+B<CgroupMountPoint> by default. When Slurm is build with support for multiple
++B<CgroupMountPoint> by default. When Slurm is built with support for multiple
 +Slurmd by node, it will use a path including the nodename declared for the
 +node: I<cpuset/slurm_NODENAME>. This plugin will try both and will by default
 +use the hostname returned by C<gethostname()>. If this does not fit the current
