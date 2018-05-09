@@ -150,7 +150,7 @@ new file mode 100644
 index 0000000..305e081
 --- /dev/null
 +++ b/src/slurmd.c
-@@ -0,0 +1,1115 @@
+@@ -0,0 +1,1116 @@
 +/**
 + * collectd - src/slurmd.c
 + * Copyright (C) 2015       Rémi Palancher
@@ -1068,9 +1068,10 @@ index 0000000..305e081
 +        status = slurmd_get_jobstep_memory(step_cpuset_mnt_pt, xmemory);
 +        if(status < 0)
 +          ret = -1;
-+        else
++        else {
 +          memory->pss += xmemory->pss;
 +          memory->rss += xmemory->rss;
++        }
 +    }
 +  }
 +  closedir(dir);
