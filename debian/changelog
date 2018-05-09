@@ -1,3 +1,11 @@
+collectd (5.7.1-1.1sci9u1) scibian9; urgency=medium
+
+  * Port of Scibian patches
+  * Disable some new plugins
+  * Remove edpkg-shlibdeps on RRD
+
+ -- Rémi Palancher <remi-externe.palancher@edf.fr>  Wed, 14 May 2018 09:23:22 +0200
+
 collectd (5.7.1-1.1) unstable; urgency=medium
 
   * Non-maintainer upload.
