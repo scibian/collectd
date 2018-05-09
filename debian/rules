@@ -99,23 +99,28 @@ confflags += \
   --disable-apple_sensors \
   --disable-aquaero \
   --disable-ascent \
+  --disable-barometer \
   --disable-battery \
   --disable-bind \
+  --disable-ceph \
   --disable-conntrack \
   --disable-curl \
   --disable-curl_json \
   --disable-curl_xml \
   --disable-dbi \
   --disable-dns \
+  --disable-dpdkstat \
   --disable-email \
   --disable-filecount \
   --disable-gmond \
+  --disable-gps \
   --disable-hddtemp \
   --disable-ipmi \
   --disable-iptables \
   --disable-ipvs \
   --disable-java \
   --disable-libvirt \
+  --disable-log_logstash \
   --disable-lvm \
   --disable-madwifi \
   --disable-mbmon \
@@ -124,6 +129,7 @@ confflags += \
   --disable-memcached \
   --disable-mic \
   --disable-modbus \
+  --disable-mqtt \
   --disable-multimeter \
   --disable-mysql \
   --disable-netapp \
@@ -152,6 +158,7 @@ confflags += \
   --disable-sensors \
   --disable-serial \
   --disable-sigrok \
+  --disable-smart \
   --disable-snmp \
   --disable-statsd \
   --disable-table \
@@ -163,12 +170,16 @@ confflags += \
   --disable-ted \
   --disable-tokyotyrant \
   --disable-varnish \
+  --disable-virt \
   --disable-vserver \
   --disable-wireless \
   --disable-write_http \
+  --disable-write_kafka \
   --disable-write_mongodb \
+  --disable-write_prometheus \
   --disable-write_redis \
-  --disable-write_riemann
+  --disable-write_riemann \
+  --disable-xencpu
 
 # These plugins are Linux-specific.
 ifneq (,$(filter kfreebsd-i386 kfreebsd-amd64, $(DEB_BUILD_ARCH)))
