@@ -1,3 +1,18 @@
+collectd (5.4.1-6+deb8u2sci8u1) scibian8; urgency=medium
+
+  [ Thomas HAMEL ]
+  * slurmd: support cgroups in cpuset/slurm_NODENAME
+  * slurmd: Optional RSS or PSS memory collection
+
+  [ Rémi Palancher ]
+  * Fix default cgroup path for slurmd plugin
+  * slurmd: add missing brackets for RSS
+
+  [ Nicolas Meaux ]
+  * Add exec-cuda.sh in contrib with patch
+
+ -- Rémi Palancher <remi-externe.palancher@edf.fr>  Wed, 09 May 2018 10:27:17 +0200
+
 collectd (5.4.1-6+deb8u1) jessie-security; urgency=high
 
   * debian/patches/CVE-2016-6254.dpatch: Fix heap overflow in the network
