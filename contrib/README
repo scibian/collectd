@@ -17,6 +17,11 @@ collectd-network.py
 in pure Python. It currently supports to receive data and notifications from
 collectd.
 
+collectd.service
+----------------
+  Service file for systemd. Please ship this file as
+  /lib/systemd/system/collectd.service in any linux package of collectd.
+
 collectd-unixsock.py
 --------------------
   This Python module by Clay Loveless provides an interface to collect's
@@ -65,11 +70,6 @@ file. That is very handy when you realise that you have bundled up DSes in one
 RRD-file that should have been in multiple RRD-files instead. Is is used by
 `migrate-3-4.px' to split up the cpu-, nfs-, swap-files and possibly others.
 
-fedora/
--------
-  Init-script and Spec-file that can be used when creating RPM-packages for
-Fedora.
-
 GenericJMX.conf
 ---------------
   Example configuration file for the ‘GenericJMX’ Java plugin. Please read the
@@ -101,8 +101,3 @@ solaris-smf
 -----------
   Manifest file for the Solaris SMF system and detailed information on how to
 register collectd as a service with this system.
-
-collectd.service
-----------------
-  Service file for systemd. Please ship this file as
-  /lib/systemd/system/collectd.service in any linux package of collectd.
