@@ -143,7 +143,6 @@ confflags += \
   --disable-onewire \
   --disable-openvpn \
   --disable-oracle \
-  --disable-perl \
   --disable-pf \
   --disable-pinba \
   --disable-ping \
