@@ -149,7 +149,6 @@ confflags += \
   --disable-postgresql \
   --disable-powerdns \
   --disable-protocols \
-  --disable-python \
   --disable-redis \
   --disable-routeros \
   --disable-rrdcached \
