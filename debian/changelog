@@ -1,3 +1,9 @@
+collectd (5.4.1-6+deb8u2sci8u2) scibian8; urgency=medium
+
+  * Add python plugin to package
+
+ -- MHamed Bouaziz <mhamed-externe.bouaziz@edf.fr>  Thu, 23 May 2019 14:36:26 +0200
+
 collectd (5.4.1-6+deb8u2sci8u1) scibian8; urgency=medium
 
   [ Thomas HAMEL ]
