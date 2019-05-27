@@ -1,3 +1,9 @@
+collectd (5.7.1-1.1sci9u5) scibian9; urgency=medium
+
+  * Add missing build-dep on libpython-dev
+
+ -- Rémi Palancher <remi-externe.palancher@edf.fr>  Mon, 27 May 2019 15:58:08 +0200
+
 collectd (5.7.1-1.1sci9u4) scibian9; urgency=medium
 
   * Enable python plugin 
