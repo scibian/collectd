@@ -1,3 +1,9 @@
+collectd (5.4.1-6+deb8u2sci8u3) scibian8; urgency=medium
+
+  * Add missing build-dep on libpython-dev
+
+ -- Rémi Palancher <remi-externe.palancher@edf.fr>  Mon, 27 May 2019 15:38:13 +0200
+
 collectd (5.4.1-6+deb8u2sci8u2) scibian8; urgency=medium
 
   * Add python plugin to package
