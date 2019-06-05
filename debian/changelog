@@ -1,3 +1,9 @@
+collectd (5.7.1-1.1sci9u6) scibian9; urgency=medium
+
+  * Change build-dep libpython-dev->python-dev
+
+ -- Rémi Palancher <remi-externe.palancher@edf.fr>  Wed, 05 Jun 2019 11:13:52 +0200
+
 collectd (5.7.1-1.1sci9u5) scibian9; urgency=medium
 
   * Add missing build-dep on libpython-dev
