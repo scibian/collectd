@@ -1,3 +1,10 @@
+collectd (5.7.1-1.1sci9u8) scibian9; urgency=medium
+
+  * Add patches to fix CVE-2017-16820 and CVE-2017-7401
+  * Rebuild for slurm 19.05.7
+
+ -- Rémi Palancher <remi-externe.palancher@edf.fr>  Mon, 20 Jul 2020 16:03:11 +0200
+
 collectd (5.7.1-1.1sci9u7) scibian9; urgency=medium
 
   * Rebuild for slurm 19.05.5 (libslurm34)
