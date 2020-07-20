@@ -12,3 +12,4 @@ slurmd_plugin.patch
 slurmctld_plugin.patch
 exec_cuda_script.patch
 cve-2017-7401.patch
+cve-2017-16820.patch
