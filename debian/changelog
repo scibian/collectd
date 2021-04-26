@@ -1,3 +1,9 @@
+collectd (5.7.1-1.1sci9u9) scibian9; urgency=medium
+
+  * Rebuild for slurm 20.11.5
+
+ -- Romaric Kanyamibwa <romaric-externe.kanyamibwa@edf.fr>  Mon, 26 Apr 2021 21:26:50 +0200
+
 collectd (5.7.1-1.1sci9u8) scibian9; urgency=medium
 
   * Add patches to fix CVE-2017-16820 and CVE-2017-7401
