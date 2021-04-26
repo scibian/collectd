@@ -1,3 +1,9 @@
+collectd (5.7.1-1.1sci10u1) scibian10; urgency=medium
+
+  * Bump compat to 11
+
+ -- Romaric Kanyamibwa <romaric-externe.kanyamibwa@edf.fr>  Mon, 26 Apr 2021 21:31:42 +0200
+
 collectd (5.7.1-1.1sci9u9) scibian9; urgency=medium
 
   * Rebuild for slurm 20.11.5
