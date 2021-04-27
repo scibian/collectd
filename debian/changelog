@@ -1,3 +1,9 @@
+collectd (5.7.1-1.1sci10u2) scibian10; urgency=medium
+
+  * Revert "Bump compat to 11"
+
+ -- Romaric Kanyamibwa <romaric-externe.kanyamibwa@edf.fr>  Tue, 27 Apr 2021 11:43:16 +0200
+
 collectd (5.7.1-1.1sci10u1) scibian10; urgency=medium
 
   * Bump compat to 11
