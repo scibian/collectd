@@ -31,6 +31,7 @@ BuildRequires: perl-interpreter
 BuildRequires: perl(ExtUtils::MakeMaker)
 BuildRequires: perl(ExtUtils::Embed)
 BuildRequires: libgcrypt-devel
+BuildRequires: slurm-devel
 Requires(post):   systemd
 Requires(preun):  systemd
 Requires(postun): systemd
