@@ -4,7 +4,7 @@
 Summary: Statistics collection daemon for filling RRD files
 Name: collectd
 Version: 5.9.0
-Release: 5%{?dist}
+Release: 5%{?dist}_1.edf
 License: GPLv2
 URL: https://collectd.org/
 
@@ -1029,6 +1029,13 @@ make check
 
 
 %changelog
+* Thu Apr 07 2022 Rémi Palancher <remi-externe.palancher@edf.fr> - 5.9.0-5.el8_1.edf
+- Add EDF patches (sync reads, slurmd, slurmctld) for collectd 5.9.0
+- Set source in *.tar.gz format
+- Add BuildRequires on slurm-devel
+- Run autoreconf before configure
+- Install slurm plugins in main package
+
 * Mon Nov 11 2019 Ruben Kerkhof <ruben@rubenkerkhof.com> - 5.9.0-5
 - Enable write_riemann plugin (#1770457)
 
