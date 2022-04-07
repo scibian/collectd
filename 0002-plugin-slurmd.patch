@@ -1,4 +1,4 @@
-From 2f385be1c50d0e8afc3f994c622419845d1721b3 Mon Sep 17 00:00:00 2001
+From 31a3c336a7d502082c9134b7087be272bb05c946 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?R=C3=A9mi=20Palancher?= <remi-externe.palancher@edf.fr>
 Date: Thu, 7 Apr 2022 11:37:11 +0200
 Subject: [PATCH 2/3] plugin slurmd
@@ -13,7 +13,7 @@ Subject: [PATCH 2/3] plugin slurmd
  create mode 100644 src/slurmd.c
 
 diff --git a/Makefile.am b/Makefile.am
-index 0821283..da7d543 100644
+index 0821283..4b63041 100644
 --- a/Makefile.am
 +++ b/Makefile.am
 @@ -1697,6 +1697,12 @@ sigrok_la_LDFLAGS = $(PLUGIN_LDFLAGS)
@@ -22,7 +22,7 @@ index 0821283..da7d543 100644
  
 +if BUILD_PLUGIN_SLURMD
 +pkglib_LTLIBRARIES += slurmd.la
-+slurmd_la_SOURCES = slurmd.c
++slurmd_la_SOURCES = src/slurmd.c
 +slurmd_la_LDFLAGS = $(PLUGIN_LDFLAGS)
 +endif
 +
@@ -152,7 +152,7 @@ index 835b2dd..575e331 100644
  Since the configuration of the C<snmp plugin> is a little more complicated than
 diff --git a/src/slurmd.c b/src/slurmd.c
 new file mode 100644
-index 0000000..b87dd70
+index 0000000..4747ae6
 --- /dev/null
 +++ b/src/slurmd.c
 @@ -0,0 +1,1116 @@
@@ -178,7 +178,7 @@ index 0000000..b87dd70
 + **/
 +
 +#include "collectd.h"
-+#include "common.h"
++#include "utils/common/common.h"
 +#include "plugin.h"
 +#include "configfile.h"
 +
