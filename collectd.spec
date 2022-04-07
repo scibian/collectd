@@ -21,6 +21,9 @@ Source97: rrdtool.conf
 Source98: onewire.conf
 
 Patch0: %{name}-include-collectd.d.patch
+Patch1: 0001-Delay-first-read.patch
+Patch2: 0002-plugin-slurmd.patch
+Patch3: 0003-slurmctld-plugin.patch
 
 BuildRequires: perl-devel
 BuildRequires: perl-generators

@@ -1,0 +1,115 @@
+From 998488ec6dc39b59f4ec660f12c26a581c5cc1fe Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?R=C3=A9mi=20Palancher?= <remi-externe.palancher@edf.fr>
+Date: Thu, 7 Apr 2022 11:52:25 +0200
+Subject: [PATCH 1/3] Delay first read
+
+---
+ src/collectd.conf.in    |  2 ++
+ src/collectd.conf.pod   | 11 +++++++++++
+ src/daemon/configfile.c |  3 ++-
+ src/daemon/plugin.c     | 40 +++++++++++++++++++++++++++++++++++++++-
+ 4 files changed, 54 insertions(+), 2 deletions(-)
+
+diff --git a/src/collectd.conf.in b/src/collectd.conf.in
+index fc1deac..043d33b 100644
+--- a/src/collectd.conf.in
++++ b/src/collectd.conf.in
+@@ -50,6 +50,8 @@
+ #WriteQueueLimitHigh 1000000
+ #WriteQueueLimitLow   800000
+ 
++#SyncNodesReads false
++
+ ##############################################################################
+ # Logging                                                                    #
+ #----------------------------------------------------------------------------#
+diff --git a/src/collectd.conf.pod b/src/collectd.conf.pod
+index ed49195..835b2dd 100644
+--- a/src/collectd.conf.pod
++++ b/src/collectd.conf.pod
+@@ -341,6 +341,17 @@ Configure the name of the "pre-cache chain" and the "post-cache chain". Please
+ see L</"FILTER CONFIGURATION"> below on information on chains and how these
+ setting change the daemon's behavior.
+ 
++=item B<SyncNodesReads> B<true|false>
++
++This parameter can be used to synchronize the plugin reads among multiple nodes
++on a cluster setup. When set to B<true>, the first plugin reads are delayed to
++the beginning of the next read interval. This way, if the system clocks of the
++nodes are synchronized (using NTP or similar) and the read intervals are
++equal, the plugin reads are also naturally synchronized among these nodes.
++
++The default value is B<false>. The first plugin reads are scheduled as soon as
++possible on collectd start.
++
+ =back
+ 
+ =head1 PLUGIN OPTIONS
+diff --git a/src/daemon/configfile.c b/src/daemon/configfile.c
+index 735be83..350c625 100644
+--- a/src/daemon/configfile.c
++++ b/src/daemon/configfile.c
+@@ -115,7 +115,8 @@ static cf_global_option_t cf_global_options[] = {
+     {"CollectInternalStats", NULL, 0, "false"},
+     {"PreCacheChain", NULL, 0, "PreCache"},
+     {"PostCacheChain", NULL, 0, "PostCache"},
+-    {"MaxReadInterval", NULL, 0, "86400"}};
++    {"MaxReadInterval", NULL, 0, "86400"},
++    {"SyncNodesReads", NULL, 0, "false"}};
+ static int cf_global_options_num = STATIC_ARRAY_SIZE(cf_global_options);
+ 
+ static int cf_default_typesdb = 1;
+diff --git a/src/daemon/plugin.c b/src/daemon/plugin.c
+index b4e5ae7..e4ec0ae 100644
+--- a/src/daemon/plugin.c
++++ b/src/daemon/plugin.c
+@@ -1085,7 +1085,45 @@ static int plugin_insert_read(read_func_t *rf) {
+   int status;
+   llentry_t *le;
+ 
+-  rf->rf_next_read = cdtime();
++  cdtime_t now = cdtime();
++  cdtime_t next_read = 0;
++
++  if (IS_TRUE (global_option_get ("SyncNodesReads")))
++  {
++    /*
++     * In order to kind of "synchronize" all collectd plugin reads
++     * among various nodes, wait for the current interval to be
++     * over. This way, if all nodes clocks are properly
++     * synchronized (by NTP or so) and the read interval is the
++     * same on all nodes, the read callbacks will hopefully happen
++     * at (almost) the same time.
++     *
++     * To help understand the interval maths, here is an example
++     * timeline:
++     *
++     *                                      interval
++     *                            |------------------------->|
++     * -+-------------------------+--------------------------+->
++     *             ^              ^
++     *             |---- wait --->|
++     *            now           start
++     *
++     *  |--------->|------------->|
++     *       i1            i2
++     *
++     * i1 = now % interval
++     * i2 = interval - (now % interval)
++     *
++     * First read must be schedule at now + i2
++     */
++    next_read = now + (rf->rf_interval - (now % rf->rf_interval));
++    DEBUG ("plugin %s first read is delayed to %f to sync with "
++           "other nodes",
++           rf->rf_name,
++           CDTIME_T_TO_DOUBLE(next_read));
++  } else
++    next_read = now;
++  rf->rf_next_read = next_read;
+   rf->rf_effective_interval = rf->rf_interval;
+ 
+   pthread_mutex_lock(&read_lock);
+-- 
+2.20.1
+
