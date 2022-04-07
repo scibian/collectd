@@ -513,6 +513,7 @@ touch src/pinba.proto
 
 
 %build
+autoreconf
 %configure \
     --disable-dependency-tracking \
     --enable-all-plugins \
