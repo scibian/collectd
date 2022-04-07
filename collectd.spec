@@ -717,6 +717,8 @@ make check
 %{_libdir}/collectd/processes.so
 %{_libdir}/collectd/protocols.so
 %{_libdir}/collectd/serial.so
+%{_libdir}/collectd/slurmctld.so
+%{_libdir}/collectd/slurmd.so
 %{_libdir}/collectd/statsd.so
 %{_libdir}/collectd/swap.so
 %{_libdir}/collectd/syslog.so
