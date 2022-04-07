@@ -8,7 +8,7 @@ Release: 5%{?dist}
 License: GPLv2
 URL: https://collectd.org/
 
-Source: https://collectd.org/files/%{name}-%{version}.tar.bz2
+Source: %{name}-%{version}.tar.gz
 Source1: collectd-httpd.conf
 Source2: collectd.service
 Source91: apache.conf
