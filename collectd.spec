@@ -24,6 +24,7 @@ Patch0: %{name}-include-collectd.d.patch
 Patch1: 0001-Delay-first-read.patch
 Patch2: 0002-plugin-slurmd.patch
 Patch3: 0003-slurmctld-plugin.patch
+Patch4: 0004-exec-cuda.sh-script.patch
 
 BuildRequires: perl-devel
 BuildRequires: perl-generators
@@ -621,6 +622,8 @@ done
 # *.la files shouldn't be distributed.
 rm -f %{buildroot}/%{_libdir}/{collectd/,}*.la
 
+# contrib script
+install -Dp -m0755 contrib/exec-cuda.sh %{buildroot}/usr/lib/collectd/utils/exec-cuda.sh
 
 %check
 make check
@@ -747,6 +750,7 @@ make check
 %{_libdir}/collectd/write_stackdriver.so
 %{_libdir}/collectd/write_syslog.so
 %{_libdir}/collectd/zfs_arc.so
+/usr/lib/collectd/utils/exec-cuda.sh
 
 %dir %{_datadir}/collectd/
 %{_datadir}/collectd/types.db
