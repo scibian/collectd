@@ -4,7 +4,7 @@
 Summary: Statistics collection daemon for filling RRD files
 Name: collectd
 Version: 5.9.0
-Release: 5%{?dist}_1.edf
+Release: 5%{?dist}_2.edf
 License: GPLv2
 URL: https://collectd.org/
 
@@ -1034,6 +1034,10 @@ make check
 
 
 %changelog
+* Thu Apr 14 2022 Rémi Palancher <remi-externe.palancher@edf.fr> - 5.9.0-5.el8_2.edf
+- Slurm patches modified for new collectd and libslurm APIs
+- Add patch for exec-cuda.sh
+
 * Thu Apr 07 2022 Rémi Palancher <remi-externe.palancher@edf.fr> - 5.9.0-5.el8_1.edf
 - Add EDF patches (sync reads, slurmd, slurmctld) for collectd 5.9.0
 - Set source in *.tar.gz format
