@@ -1,0 +1,28 @@
+From 65ca0f1a56c80b6613215bd024f42949c68bd95a Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?R=C3=A9mi=20Palancher?= <remi-externe.palancher@edf.fr>
+Date: Thu, 14 Apr 2022 11:54:49 +0200
+Subject: [PATCH 5/5] Override DEFAULT_VERSION
+
+As version detection using `git describe` cannot work with scibian git
+repositories, DEFAULT_VERSION is modified to remove git suffix. This
+suffix notably breaks version checks performed by collectd puppet
+plugin.
+---
+ version-gen.sh | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/version-gen.sh b/version-gen.sh
+index 0298a44..f544f96 100755
+--- a/version-gen.sh
++++ b/version-gen.sh
+@@ -1,6 +1,6 @@
+ #!/bin/sh
+ 
+-DEFAULT_VERSION="5.9.0.git"
++DEFAULT_VERSION="5.9.0"
+ 
+ if [ -d .git ]; then
+ 	VERSION="`git describe --dirty=+ --abbrev=7 2> /dev/null | grep collectd | sed -e 's/^collectd-//' -e 's/-/./g'`"
+-- 
+2.20.1
+

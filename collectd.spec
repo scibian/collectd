@@ -25,6 +25,7 @@ Patch1: 0001-Delay-first-read.patch
 Patch2: 0002-plugin-slurmd.patch
 Patch3: 0003-slurmctld-plugin.patch
 Patch4: 0004-exec-cuda.sh-script.patch
+Patch5: 0005-Override-DEFAULT_VERSION.patch
 
 BuildRequires: perl-devel
 BuildRequires: perl-generators
