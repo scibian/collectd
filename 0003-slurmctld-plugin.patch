@@ -1,15 +1,15 @@
-From d36e8a65dc7f9a8065208c42d5f088d2c4f124e3 Mon Sep 17 00:00:00 2001
+From 957b8aa61eb0d519f7136c58663e8bcd3cee9c05 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?R=C3=A9mi=20Palancher?= <remi-externe.palancher@edf.fr>
 Date: Thu, 7 Apr 2022 11:44:01 +0200
-Subject: [PATCH 3/3] slurmctld plugin
+Subject: [PATCH 3/4] slurmctld plugin
 
 ---
- Makefile.am           |  8 ++++
- configure.ac          | 63 +++++++++++++++++++++++++++
- src/collectd.conf.in  |  3 ++
- src/collectd.conf.pod | 15 +++++++
- src/slurmctld.c       | 99 +++++++++++++++++++++++++++++++++++++++++++
- 5 files changed, 188 insertions(+)
+ Makefile.am           |   8 +++
+ configure.ac          |  63 +++++++++++++++++++++++
+ src/collectd.conf.in  |   3 ++
+ src/collectd.conf.pod |  15 ++++++
+ src/slurmctld.c       | 116 ++++++++++++++++++++++++++++++++++++++++++
+ 5 files changed, 205 insertions(+)
  create mode 100644 src/slurmctld.c
 
 diff --git a/Makefile.am b/Makefile.am
@@ -168,10 +168,10 @@ index 575e331..5aaa0d8 100644
  Since the configuration of the C<snmp plugin> is a little more complicated than
 diff --git a/src/slurmctld.c b/src/slurmctld.c
 new file mode 100644
-index 0000000..21cbc82
+index 0000000..f1e5180
 --- /dev/null
 +++ b/src/slurmctld.c
-@@ -0,0 +1,99 @@
+@@ -0,0 +1,116 @@
 +/**
 + * collectd - src/slurmctld.c
 + * Copyright (C) 2015       Rémi Palancher
@@ -213,7 +213,7 @@ index 0000000..21cbc82
 +
 +  sstrncpy (vl.host, hostname_g, sizeof (vl.host));
 +  sstrncpy (vl.plugin, "slurmctld", sizeof (vl.plugin));
-+  ssnprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "job_%lu", job_number);
++  snprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "job_%lu", job_number);
 +  sstrncpy (vl.type, "count", sizeof(vl.type));
 +  sstrncpy (vl.type_instance, type_instance, sizeof(vl.type_instance));
 +
@@ -267,9 +267,26 @@ index 0000000..21cbc82
 +  return (0);
 +} /* int slurmctld_read */
 +
++static int slurmctld_init (void)
++{
++  /* Initialize slurm library with configuration file at default path */
++  slurm_init(NULL);
++  return (0);
++} /* int slurmctld_init */
++
++static int slurmctld_shutdown (void)
++{
++  /* Cleanup slurm library internal structures */
++  slurm_fini();
++  return (0);
++} /* int slurmctld_shutdown */
++
 +void module_register (void)
 +{
++
++  plugin_register_init("slurmctld", slurmctld_init);
 +  plugin_register_read("slurmctld", slurmctld_read);
++  plugin_register_shutdown("slurmctld", slurmctld_shutdown);
 +} /* void module_register */
 -- 
 2.20.1

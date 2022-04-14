@@ -1,7 +1,7 @@
-From 31a3c336a7d502082c9134b7087be272bb05c946 Mon Sep 17 00:00:00 2001
+From bab77a595eb4ed244dbd15e6b68306ed8d67debc Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?R=C3=A9mi=20Palancher?= <remi-externe.palancher@edf.fr>
 Date: Thu, 7 Apr 2022 11:37:11 +0200
-Subject: [PATCH 2/3] plugin slurmd
+Subject: [PATCH 2/4] plugin slurmd
 
 ---
  Makefile.am           |    6 +
@@ -152,7 +152,7 @@ index 835b2dd..575e331 100644
  Since the configuration of the C<snmp plugin> is a little more complicated than
 diff --git a/src/slurmd.c b/src/slurmd.c
 new file mode 100644
-index 0000000..4747ae6
+index 0000000..3432297
 --- /dev/null
 +++ b/src/slurmd.c
 @@ -0,0 +1,1116 @@
@@ -385,7 +385,7 @@ index 0000000..4747ae6
 +
 +  sstrncpy (vl.host, hostname_g, sizeof (vl.host));
 +  sstrncpy (vl.plugin, "slurmd", sizeof (vl.plugin));
-+  ssnprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "job_%lu", job_number);
++  snprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "job_%lu", job_number);
 +  sstrncpy (vl.type, type, sizeof(vl.type));
 +  sstrncpy (vl.type_instance, type_instance, sizeof(vl.type_instance));
 +
@@ -476,19 +476,19 @@ index 0000000..4747ae6
 + */
 +void slurmd_snprintf_cpu_times (char *str, int strlen, cpu_time_t *times)
 +{
-+  ssnprintf(str, strlen,
-+            "user: %lu nice: %lu system: %lu idle: %lu iowait: %lu irq: %lu "
-+            "softirq: %lu steal: %lu guest: %lu guest_nice: %lu",
-+            times->user,
-+            times->nice,
-+            times->system,
-+            times->idle,
-+            times->iowait,
-+            times->irq,
-+            times->softirq,
-+            times->steal,
-+            times->guest,
-+            times->guest_nice);
++  snprintf(str, strlen,
++           "user: %lu nice: %lu system: %lu idle: %lu iowait: %lu irq: %lu "
++           "softirq: %lu steal: %lu guest: %lu guest_nice: %lu",
++           times->user,
++           times->nice,
++           times->system,
++           times->idle,
++           times->iowait,
++           times->irq,
++           times->softirq,
++           times->steal,
++           times->guest,
++           times->guest_nice);
 +} /* void slurmd_snprintf_cpu_times */
 +#endif
 +
@@ -581,7 +581,7 @@ index 0000000..4747ae6
 +
 +  /* build smaps fpath */
 +  bzero(smaps_fpath, sizeof(smaps_fpath));
-+  ssnprintf(smaps_fpath, sizeof(smaps_fpath), "/proc/%d/smaps", pid);
++  snprintf(smaps_fpath, sizeof(smaps_fpath), "/proc/%d/smaps", pid);
 +
 +  smaps_fh = fopen(smaps_fpath, "r");
 +
@@ -619,7 +619,7 @@ index 0000000..4747ae6
 +
 +  /* build stat fpath */
 +  bzero(stat_fpath, sizeof(stat_fpath));
-+  ssnprintf(stat_fpath, sizeof(stat_fpath), "/proc/%d/stat", pid);
++  snprintf(stat_fpath, sizeof(stat_fpath), "/proc/%d/stat", pid);
 +
 +  stat_fh = fopen(stat_fpath, "r");
 +
@@ -672,7 +672,7 @@ index 0000000..4747ae6
 +    return (-1);
 +  }
 +
-+  ssnprintf(searched_cpu_name, MAX_CPU_NAME_SIZE, "cpu%d", job_cpus[cpu_idx]);
++  snprintf(searched_cpu_name, MAX_CPU_NAME_SIZE, "cpu%d", job_cpus[cpu_idx]);
 +  while (!all_cpus_found &&
 +         (fscanf(fstat, "%s %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu\n",
 +                 cur_cpu_name, &xcpu_time->user, &xcpu_time->nice,
@@ -692,7 +692,7 @@ index 0000000..4747ae6
 +      cpu_idx++;
 +      if (cpu_idx >= job_nb_cpus)
 +        all_cpus_found = 1;
-+      ssnprintf(searched_cpu_name, MAX_CPU_NAME_SIZE, "cpu%d", job_cpus[cpu_idx]);
++      snprintf(searched_cpu_name, MAX_CPU_NAME_SIZE, "cpu%d", job_cpus[cpu_idx]);
 +    }
 +  }
 +  fclose(fstat);
@@ -762,7 +762,7 @@ index 0000000..4747ae6
 +  for(i=0; i<nb_pids; i++) {
 +    pid = pids[i];
 +    if(!slurmd_pid_is_thread (pid, threads, nb_threads)) {
-+      ssnprintf(task_dir_fpath, PATH_MAX, "/proc/%d/task", pid);
++      snprintf(task_dir_fpath, PATH_MAX, "/proc/%d/task", pid);
 +
 +      dir = opendir(task_dir_fpath);
 +
@@ -887,7 +887,7 @@ index 0000000..4747ae6
 +
 +    /* check if ent name starts with 'job_' */
 +    if (strncmp(dir_ent->d_name, "tasks", 6) == 0) {
-+      ssnprintf(tasks_fpath, sizeof(tasks_fpath), "%s/%s",
++      snprintf(tasks_fpath, sizeof(tasks_fpath), "%s/%s",
 +                step_cpuset_mnt_pt, dir_ent->d_name);
 +      xresult->rss = 0;
 +      xresult->pss = 0;
@@ -928,7 +928,7 @@ index 0000000..4747ae6
 +  bzero(cpus_fpath, sizeof(cpus_fpath));
 +  bzero(cpus_str, sizeof(cpus_str));
 +
-+  ssnprintf(cpus_fpath, sizeof(cpus_fpath), "%s/%s", cpuset_fpath, "cpuset.cpus");
++  snprintf(cpus_fpath, sizeof(cpus_fpath), "%s/%s", cpuset_fpath, "cpuset.cpus");
 +  cpus_fh = fopen(cpus_fpath, "r");
 +
 +  if (cpus_fh == NULL) {
@@ -1066,7 +1066,7 @@ index 0000000..4747ae6
 +      break;
 +
 +    if (strncmp(dir_ent->d_name, "step_", 5) == 0) {
-+        ssnprintf(step_cpuset_mnt_pt, sizeof(step_cpuset_mnt_pt), "%s/%s",
++        snprintf(step_cpuset_mnt_pt, sizeof(step_cpuset_mnt_pt), "%s/%s",
 +                  job_cpuset_mnt_pt, dir_ent->d_name);
 +        xmemory->pss = 0;
 +        xmemory->rss = 0;
@@ -1132,7 +1132,7 @@ index 0000000..4747ae6
 +      strncpy(job_number_str, job_number_addr, strlen(job_number_addr));
 +      job_number = slurmd_str_to_long(job_number_str);
 +      if (job_number != -1) {
-+        ssnprintf(job_cpuset_mnt_pt, sizeof(job_cpuset_mnt_pt), "%s/%s",
++        snprintf(job_cpuset_mnt_pt, sizeof(job_cpuset_mnt_pt), "%s/%s",
 +                  uid_cpuset_mnt_pt, dir_ent->d_name);
 +        if(!slurmd_browse_job_cpuset(job_cpuset_mnt_pt, job_number))
 +          ret = 0;
@@ -1162,7 +1162,7 @@ index 0000000..4747ae6
 +
 +  /* Try to open cpuset/slurm in cgroups */
 +  bzero(slurm_cpuset_mnt_pt, PATH_MAX);
-+  ssnprintf(slurm_cpuset_mnt_pt, sizeof(slurm_cpuset_mnt_pt), "%s/%s",
++  snprintf(slurm_cpuset_mnt_pt, sizeof(slurm_cpuset_mnt_pt), "%s/%s",
 +            cgroup_mnt_pt, "cpuset/slurm");
 +
 +  dir = opendir(slurm_cpuset_mnt_pt);
@@ -1181,7 +1181,7 @@ index 0000000..4747ae6
 +    }
 +
 +    bzero(slurm_cpuset_mnt_pt, PATH_MAX);
-+    ssnprintf(slurm_cpuset_mnt_pt, sizeof(slurm_cpuset_mnt_pt), "%s/%s_%s",
++    snprintf(slurm_cpuset_mnt_pt, sizeof(slurm_cpuset_mnt_pt), "%s/%s_%s",
 +              cgroup_mnt_pt, "cpuset/slurm", node_name);
 +    dir = opendir(slurm_cpuset_mnt_pt);
 +  }
@@ -1206,7 +1206,7 @@ index 0000000..4747ae6
 +
 +    /* check if dir_ent name starts with 'uid_' */
 +    if (strncmp(dir_ent->d_name, "uid_", 4) == 0) {
-+      ssnprintf(uid_cpuset_mnt_pt, sizeof(uid_cpuset_mnt_pt), "%s/%s",
++      snprintf(uid_cpuset_mnt_pt, sizeof(uid_cpuset_mnt_pt), "%s/%s",
 +                slurm_cpuset_mnt_pt, dir_ent->d_name);
 +      if(slurmd_browse_uid_cpuset(uid_cpuset_mnt_pt))
 +        ret = -1;
