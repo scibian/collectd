@@ -1,3 +1,9 @@
+collectd (5.7.1-1.1sci10u3) scibian10; urgency=medium
+
+  * Rebuild for Slurm 21.08 
+
+ -- Mathieu Chouquet-Stringer <mathieu-externe.chouquet-stringer@edf.fr>  Wed, 04 May 2022 17:17:49 +0200
+
 collectd (5.7.1-1.1sci10u2) scibian10; urgency=medium
 
   * Revert "Bump compat to 11"
