@@ -1,3 +1,9 @@
+collectd (5.7.1-1.1sci9u11) scibian9; urgency=medium
+
+  * Rebuild for slurm 23.02
+
+ -- Nilce BOUSSAMBA <nilce-externe.boussamba@edf.fr>  Tue, 18 Jul 2023 12:48:39 +0200
+
 collectd (5.7.1-1.1sci9u10) scibian9; urgency=medium
 
   * Rebuild for slurm 21.08 
