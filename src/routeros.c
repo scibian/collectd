@@ -26,8 +26,8 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 
 #include <routeros_api.h>
 
@@ -39,12 +39,13 @@ struct cr_data_s {
   char *username;
   char *password;
 
-  _Bool collect_interface;
-  _Bool collect_regtable;
-  _Bool collect_cpu_load;
-  _Bool collect_memory;
-  _Bool collect_df;
-  _Bool collect_disk;
+  bool collect_interface;
+  bool collect_regtable;
+  bool collect_cpu_load;
+  bool collect_memory;
+  bool collect_df;
+  bool collect_disk;
+  bool collect_health;
 };
 typedef struct cr_data_s cr_data_t;
 
@@ -52,7 +53,8 @@ static void cr_submit_io(cr_data_t *rd, const char *type, /* {{{ */
                          const char *type_instance, derive_t rx, derive_t tx) {
   value_list_t vl = VALUE_LIST_INIT;
   value_t values[] = {
-      {.derive = rx}, {.derive = tx},
+      {.derive = rx},
+      {.derive = tx},
   };
 
   vl.values = values;
@@ -89,13 +91,12 @@ static void submit_interface(cr_data_t *rd, /* {{{ */
 
 static int handle_interface(__attribute__((unused))
                             ros_connection_t *c, /* {{{ */
-                            const ros_interface_t *i,
-                            void *user_data) {
+                            const ros_interface_t *i, void *user_data) {
   if ((i == NULL) || (user_data == NULL))
-    return (EINVAL);
+    return EINVAL;
 
   submit_interface(user_data, i);
-  return (0);
+  return 0;
 } /* }}} int handle_interface */
 
 static void cr_submit_gauge(cr_data_t *rd, const char *type, /* {{{ */
@@ -141,9 +142,17 @@ static void submit_regtable(cr_data_t *rd, /* {{{ */
   if (r == NULL)
     return;
 
+  const char *name = r->radio_name;
+#if ROS_VERSION >= ROS_VERSION_ENCODE(1, 1, 3)
+  if (name == NULL)
+    name = r->mac_address;
+#endif
+  if (name == NULL)
+    name = "default";
+
   /*** RX ***/
   ssnprintf(type_instance, sizeof(type_instance), "%s-%s-rx", r->interface,
-            r->radio_name);
+            name);
   cr_submit_gauge(rd, "bitrate", type_instance,
                   (gauge_t)(1000000.0 * r->rx_rate));
   cr_submit_gauge(rd, "signal_power", type_instance,
@@ -152,7 +161,7 @@ static void submit_regtable(cr_data_t *rd, /* {{{ */
 
   /*** TX ***/
   ssnprintf(type_instance, sizeof(type_instance), "%s-%s-tx", r->interface,
-            r->radio_name);
+            name);
   cr_submit_gauge(rd, "bitrate", type_instance,
                   (gauge_t)(1000000.0 * r->tx_rate));
   cr_submit_gauge(rd, "signal_power", type_instance,
@@ -160,8 +169,7 @@ static void submit_regtable(cr_data_t *rd, /* {{{ */
   cr_submit_gauge(rd, "signal_quality", type_instance, (gauge_t)r->tx_ccq);
 
   /*** RX / TX ***/
-  ssnprintf(type_instance, sizeof(type_instance), "%s-%s", r->interface,
-            r->radio_name);
+  ssnprintf(type_instance, sizeof(type_instance), "%s-%s", r->interface, name);
   cr_submit_io(rd, "if_octets", type_instance, (derive_t)r->rx_bytes,
                (derive_t)r->tx_bytes);
   cr_submit_gauge(rd, "snr", type_instance, (gauge_t)r->signal_to_noise);
@@ -171,13 +179,12 @@ static void submit_regtable(cr_data_t *rd, /* {{{ */
 
 static int handle_regtable(__attribute__((unused))
                            ros_connection_t *c, /* {{{ */
-                           const ros_registration_table_t *r,
-                           void *user_data) {
+                           const ros_registration_table_t *r, void *user_data) {
   if ((r == NULL) || (user_data == NULL))
-    return (EINVAL);
+    return EINVAL;
 
   submit_regtable(user_data, r);
-  return (0);
+  return 0;
 } /* }}} int handle_regtable */
 
 #if ROS_VERSION >= ROS_VERSION_ENCODE(1, 1, 0)
@@ -188,7 +195,7 @@ static int handle_system_resource(__attribute__((unused))
   cr_data_t *rd;
 
   if ((r == NULL) || (user_data == NULL))
-    return (EINVAL);
+    return EINVAL;
   rd = user_data;
 
   if (rd->collect_cpu_load)
@@ -207,13 +214,31 @@ static int handle_system_resource(__attribute__((unused))
   }
 
   if (rd->collect_disk) {
-    cr_submit_counter(rd, "counter", "secors_written",
+    cr_submit_counter(rd, "counter", "sectors_written",
                       (derive_t)r->write_sect_total);
     cr_submit_gauge(rd, "gauge", "bad_blocks", (gauge_t)r->bad_blocks);
   }
 
-  return (0);
+  return 0;
 } /* }}} int handle_system_resource */
+
+#if ROS_VERSION >= ROS_VERSION_ENCODE(1, 1, 3)
+static int handle_system_health(__attribute__((unused))
+                                ros_connection_t *c, /* {{{ */
+                                const ros_system_health_t *r,
+                                __attribute__((unused)) void *user_data) {
+
+  if ((r == NULL) || (user_data == NULL))
+    return EINVAL;
+
+  cr_data_t *rd = user_data;
+
+  cr_submit_gauge(rd, "voltage", "system", (gauge_t)r->voltage);
+  cr_submit_gauge(rd, "temperature", "system", (gauge_t)r->temperature);
+
+  return 0;
+} /* }}} int handle_system_health */
+#endif
 #endif
 
 static int cr_read(user_data_t *user_data) /* {{{ */
@@ -222,20 +247,18 @@ static int cr_read(user_data_t *user_data) /* {{{ */
   cr_data_t *rd;
 
   if (user_data == NULL)
-    return (EINVAL);
+    return EINVAL;
 
   rd = user_data->data;
   if (rd == NULL)
-    return (EINVAL);
+    return EINVAL;
 
   if (rd->connection == NULL) {
     rd->connection =
         ros_connect(rd->node, rd->service, rd->username, rd->password);
     if (rd->connection == NULL) {
-      char errbuf[128];
-      ERROR("routeros plugin: ros_connect failed: %s",
-            sstrerror(errno, errbuf, sizeof(errbuf)));
-      return (-1);
+      ERROR("routeros plugin: ros_connect failed: %s", STRERRNO);
+      return -1;
     }
   }
   assert(rd->connection != NULL);
@@ -244,12 +267,10 @@ static int cr_read(user_data_t *user_data) /* {{{ */
     status = ros_interface(rd->connection, handle_interface,
                            /* user data = */ rd);
     if (status != 0) {
-      char errbuf[128];
-      ERROR("routeros plugin: ros_interface failed: %s",
-            sstrerror(status, errbuf, sizeof(errbuf)));
+      ERROR("routeros plugin: ros_interface failed: %s", STRERROR(status));
       ros_disconnect(rd->connection);
       rd->connection = NULL;
-      return (-1);
+      return -1;
     }
   }
 
@@ -257,12 +278,11 @@ static int cr_read(user_data_t *user_data) /* {{{ */
     status = ros_registration_table(rd->connection, handle_regtable,
                                     /* user data = */ rd);
     if (status != 0) {
-      char errbuf[128];
       ERROR("routeros plugin: ros_registration_table failed: %s",
-            sstrerror(status, errbuf, sizeof(errbuf)));
+            STRERROR(status));
       ros_disconnect(rd->connection);
       rd->connection = NULL;
-      return (-1);
+      return -1;
     }
   }
 
@@ -272,17 +292,29 @@ static int cr_read(user_data_t *user_data) /* {{{ */
     status = ros_system_resource(rd->connection, handle_system_resource,
                                  /* user data = */ rd);
     if (status != 0) {
-      char errbuf[128];
       ERROR("routeros plugin: ros_system_resource failed: %s",
-            sstrerror(status, errbuf, sizeof(errbuf)));
+            STRERROR(status));
       ros_disconnect(rd->connection);
       rd->connection = NULL;
-      return (-1);
+      return -1;
+    }
+  }
+
+#if ROS_VERSION >= ROS_VERSION_ENCODE(1, 1, 3)
+  if (rd->collect_health) {
+    status = ros_system_health(rd->connection, handle_system_health,
+                               /* user data = */ rd);
+    if (status != 0) {
+      ERROR("routeros plugin: ros_system_health failed: %s", STRERROR(status));
+      ros_disconnect(rd->connection);
+      rd->connection = NULL;
+      return -1;
     }
   }
 #endif
+#endif
 
-  return (0);
+  return 0;
 } /* }}} int cr_read */
 
 static void cr_free_data(cr_data_t *ptr) /* {{{ */
@@ -309,7 +341,7 @@ static int cr_config_router(oconfig_item_t *ci) /* {{{ */
 
   router_data = calloc(1, sizeof(*router_data));
   if (router_data == NULL)
-    return (-1);
+    return -1;
   router_data->connection = NULL;
   router_data->node = NULL;
   router_data->service = NULL;
@@ -341,6 +373,10 @@ static int cr_config_router(oconfig_item_t *ci) /* {{{ */
       cf_util_get_boolean(child, &router_data->collect_df);
     else if (strcasecmp("CollectDisk", child->key) == 0)
       cf_util_get_boolean(child, &router_data->collect_disk);
+#if ROS_VERSION >= ROS_VERSION_ENCODE(1, 1, 3)
+    else if (strcasecmp("CollectHealth", child->key) == 0)
+      cf_util_get_boolean(child, &router_data->collect_health);
+#endif
 #endif
     else {
       WARNING("routeros plugin: Unknown config option `%s'.", child->key);
@@ -363,7 +399,27 @@ static int cr_config_router(oconfig_item_t *ci) /* {{{ */
       status = -1;
     }
 
-    if (!router_data->collect_interface && !router_data->collect_regtable) {
+    int report = 0;
+    if (router_data->collect_interface)
+      report++;
+    if (router_data->collect_regtable)
+      report++;
+#if ROS_VERSION >= ROS_VERSION_ENCODE(1, 1, 0)
+    if (router_data->collect_cpu_load)
+      report++;
+    if (router_data->collect_memory)
+      report++;
+    if (router_data->collect_df)
+      report++;
+    if (router_data->collect_disk)
+      report++;
+#if ROS_VERSION >= ROS_VERSION_ENCODE(1, 1, 3)
+    if (router_data->collect_health)
+      report++;
+#endif
+#endif
+
+    if (!report) {
       ERROR("routeros plugin: No `Collect*' option within a `Router' block. "
             "What statistics should I collect?");
       status = -1;
@@ -378,18 +434,18 @@ static int cr_config_router(oconfig_item_t *ci) /* {{{ */
     }
   }
 
-  ssnprintf(read_name, sizeof(read_name), "routeros/%s", router_data->node);
-  if (status == 0)
-    status = plugin_register_complex_read(
-        /* group = */ NULL, read_name, cr_read, /* interval = */ 0,
-        &(user_data_t){
-            .data = router_data, .free_func = (void *)cr_free_data,
-        });
-
-  if (status != 0)
+  if (status != 0) {
     cr_free_data(router_data);
+    return status;
+  }
 
-  return (status);
+  ssnprintf(read_name, sizeof(read_name), "routeros/%s", router_data->node);
+  return plugin_register_complex_read(
+      /* group = */ NULL, read_name, cr_read, /* interval = */ 0,
+      &(user_data_t){
+          .data = router_data,
+          .free_func = (void *)cr_free_data,
+      });
 } /* }}} int cr_config_router */
 
 static int cr_config(oconfig_item_t *ci) {
@@ -403,11 +459,9 @@ static int cr_config(oconfig_item_t *ci) {
     }
   }
 
-  return (0);
+  return 0;
 } /* }}} int cr_config */
 
 void module_register(void) {
   plugin_register_complex_config("routeros", cr_config);
 } /* void module_register */
-
-/* vim: set sw=2 noet fdm=marker : */

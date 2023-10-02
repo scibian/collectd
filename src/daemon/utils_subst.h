@@ -70,17 +70,6 @@ char *subst(char *buf, size_t buflen, const char *string, size_t off1,
             size_t off2, const char *replacement);
 
 /*
- * asubst:
- *
- * This function is very similar to subst(). It differs in that it
- * automatically allocates the memory required for the return value which the
- * user then has to free himself.
- *
- * Returns the newly allocated result string on success, NULL else.
- */
-char *asubst(const char *string, int off1, int off2, const char *replacement);
-
-/*
  * subst_string:
  *
  * Works like `subst', but instead of specifying start and end offsets you
@@ -100,5 +89,3 @@ char *subst_string(char *buf, size_t buflen, const char *string,
                    const char *needle, const char *replacement);
 
 #endif /* UTILS_SUBST_H */
-
-/* vim: set sw=4 ts=4 tw=78 noexpandtab : */

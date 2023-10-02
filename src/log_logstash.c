@@ -28,8 +28,8 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 
 #include <sys/types.h>
 #include <yajl/yajl_common.h>
@@ -41,8 +41,6 @@
 #define HAVE_YAJL_V2 1
 #endif
 
-#define DEFAULT_LOGFILE LOCALSTATEDIR "/log/" PACKAGE_NAME ".json.log"
-
 #if COLLECT_DEBUG
 static int log_level = LOG_DEBUG;
 #else
@@ -51,7 +49,7 @@ static int log_level = LOG_INFO;
 
 static pthread_mutex_t file_lock = PTHREAD_MUTEX_INITIALIZER;
 
-static char *log_file = NULL;
+static char *log_file;
 
 static const char *config_keys[] = {"LogLevel", "File"};
 static int config_keys_num = STATIC_ARRAY_SIZE(config_keys);
@@ -77,7 +75,7 @@ static int log_logstash_config(const char *key, const char *value) {
 static void log_logstash_print(yajl_gen g, int severity,
                                cdtime_t timestamp_time) {
   FILE *fh;
-  _Bool do_close = 0;
+  bool do_close = false;
   struct tm timestamp_tm;
   char timestamp_str[64];
   const unsigned char *buf;
@@ -149,24 +147,21 @@ static void log_logstash_print(yajl_gen g, int severity,
   pthread_mutex_lock(&file_lock);
 
   if (log_file == NULL) {
-    fh = fopen(DEFAULT_LOGFILE, "a");
-    do_close = 1;
+    fh = stderr;
   } else if (strcasecmp(log_file, "stdout") == 0) {
     fh = stdout;
-    do_close = 0;
+    do_close = false;
   } else if (strcasecmp(log_file, "stderr") == 0) {
     fh = stderr;
-    do_close = 0;
+    do_close = false;
   } else {
     fh = fopen(log_file, "a");
-    do_close = 1;
+    do_close = true;
   }
 
   if (fh == NULL) {
-    char errbuf[1024];
-    fprintf(stderr, "log_logstash plugin: fopen (%s) failed: %s\n",
-            (log_file == NULL) ? DEFAULT_LOGFILE : log_file,
-            sstrerror(errno, errbuf, sizeof(errbuf)));
+    fprintf(stderr, "log_logstash plugin: fopen (%s) failed: %s\n", log_file,
+            STRERRNO);
   } else {
     fprintf(fh, "%s\n", buf);
     if (do_close) {
@@ -187,22 +182,14 @@ err:
 
 static void log_logstash_log(int severity, const char *msg,
                              user_data_t __attribute__((unused)) * user_data) {
-  yajl_gen g;
-#if !defined(HAVE_YAJL_V2)
-  yajl_gen_config conf = {};
-
-  conf.beautify = 0;
-#endif
-
   if (severity > log_level)
     return;
 
 #if HAVE_YAJL_V2
-  g = yajl_gen_alloc(NULL);
+  yajl_gen g = yajl_gen_alloc(NULL);
 #else
-  g = yajl_gen_alloc(&conf, NULL);
+  yajl_gen g = yajl_gen_alloc(&(yajl_gen_config){0}, NULL);
 #endif
-
   if (g == NULL) {
     fprintf(stderr, "Could not allocate JSON generator.\n");
     return;
@@ -240,7 +227,7 @@ static int log_logstash_notification(const notification_t *n,
 
   if (g == NULL) {
     fprintf(stderr, "Could not allocate JSON generator.\n");
-    return (0);
+    return 0;
   }
 
   if (yajl_gen_map_open(g) != yajl_gen_status_ok)
@@ -327,12 +314,12 @@ static int log_logstash_notification(const notification_t *n,
   }
 
   log_logstash_print(g, LOG_INFO, (n->time != 0) ? n->time : cdtime());
-  return (0);
+  return 0;
 
 err:
   yajl_gen_free(g);
   fprintf(stderr, "Could not correctly generate JSON notification\n");
-  return (0);
+  return 0;
 } /* int log_logstash_notification */
 
 void module_register(void) {
@@ -343,5 +330,3 @@ void module_register(void) {
   plugin_register_notification("log_logstash", log_logstash_notification,
                                /* user_data = */ NULL);
 } /* void module_register (void) */
-
-/* vim: set sw=4 ts=4 tw=78 noexpandtab : */

@@ -21,8 +21,8 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 
 #include <libperfstat.h>
 #include <sys/protosw.h>
@@ -40,10 +40,10 @@
 static const char *config_keys[] = {"CpuPoolStats", "ReportBySerial"};
 static int config_keys_num = STATIC_ARRAY_SIZE(config_keys);
 
-static _Bool pool_stats = 0;
-static _Bool report_by_serial = 0;
+static bool pool_stats;
+static bool report_by_serial;
 #if PERFSTAT_SUPPORTS_DONATION
-static _Bool donate_flag = 0;
+static bool donate_flag;
 #endif
 static char serial[SYS_NMLN];
 
@@ -52,19 +52,19 @@ static perfstat_partition_total_t lparstats_old;
 static int lpar_config(const char *key, const char *value) {
   if (strcasecmp("CpuPoolStats", key) == 0) {
     if (IS_TRUE(value))
-      pool_stats = 1;
+      pool_stats = true;
     else
-      pool_stats = 0;
+      pool_stats = false;
   } else if (strcasecmp("ReportBySerial", key) == 0) {
     if (IS_TRUE(value))
-      report_by_serial = 1;
+      report_by_serial = true;
     else
-      report_by_serial = 0;
+      report_by_serial = false;
   } else {
-    return (-1);
+    return -1;
   }
 
-  return (0);
+  return 0;
 } /* int lpar_config */
 
 static int lpar_init(void) {
@@ -76,26 +76,25 @@ static int lpar_init(void) {
                                     sizeof(perfstat_partition_total_t),
                                     /* number = */ 1 /* (must be 1) */);
   if (status != 1) {
-    char errbuf[1024];
-    ERROR("lpar plugin: perfstat_partition_total failed: %s (%i)",
-          sstrerror(errno, errbuf, sizeof(errbuf)), status);
-    return (-1);
+    ERROR("lpar plugin: perfstat_partition_total failed: %s (%i)", STRERRNO,
+          status);
+    return -1;
   }
 
 #if PERFSTAT_SUPPORTS_DONATION
   if (!lparstats_old.type.b.shared_enabled &&
       lparstats_old.type.b.donate_enabled) {
-    donate_flag = 1;
+    donate_flag = true;
   }
 #endif
 
   if (pool_stats && !lparstats_old.type.b.pool_util_authority) {
     WARNING("lpar plugin: This partition does not have pool authority. "
             "Disabling CPU pool statistics collection.");
-    pool_stats = 0;
+    pool_stats = false;
   }
 
-  return (0);
+  return 0;
 } /* int lpar_init */
 
 static void lpar_submit(const char *type_instance, double value) {
@@ -128,7 +127,7 @@ static int lpar_read(void) {
      from chassis to chassis through Live Partition Mobility (LPM). */
   if (uname(&name) != 0) {
     ERROR("lpar plugin: uname failed.");
-    return (-1);
+    return -1;
   }
   sstrncpy(serial, name.machine, sizeof(serial));
 
@@ -138,10 +137,9 @@ static int lpar_read(void) {
                                &lparstats, sizeof(perfstat_partition_total_t),
                                /* number = */ 1 /* (must be 1) */);
   if (status != 1) {
-    char errbuf[1024];
-    ERROR("lpar plugin: perfstat_partition_total failed: %s (%i)",
-          sstrerror(errno, errbuf, sizeof(errbuf)), status);
-    return (-1);
+    ERROR("lpar plugin: perfstat_partition_total failed: %s (%i)", STRERRNO,
+          status);
+    return -1;
   }
 
   /* Number of ticks since we last run. */
@@ -149,7 +147,7 @@ static int lpar_read(void) {
   if (ticks == 0) {
     /* The stats have not been updated. Return now to avoid
      * dividing by zero */
-    return (0);
+    return 0;
   }
 
   /*
@@ -235,7 +233,7 @@ static int lpar_read(void) {
 
   memcpy(&lparstats_old, &lparstats, sizeof(lparstats_old));
 
-  return (0);
+  return 0;
 } /* int lpar_read */
 
 void module_register(void) {
@@ -243,5 +241,3 @@ void module_register(void) {
   plugin_register_init("lpar", lpar_init);
   plugin_register_read("lpar", lpar_read);
 } /* void module_register */
-
-/* vim: set sw=8 noet : */

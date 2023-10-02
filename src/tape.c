@@ -22,17 +22,21 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 
 #if !HAVE_LIBKSTAT
 #error "No applicable input method."
 #endif
 
+#if HAVE_KSTAT_H
+#include <kstat.h>
+#endif
+
 #define MAX_NUMTAPE 256
 extern kstat_ctl_t *kc;
 static kstat_t *ksp[MAX_NUMTAPE];
-static int numtape = 0;
+static int numtape;
 
 static int tape_init(void) {
   kstat_t *ksp_chain;
@@ -40,7 +44,7 @@ static int tape_init(void) {
   numtape = 0;
 
   if (kc == NULL)
-    return (-1);
+    return -1;
 
   for (numtape = 0, ksp_chain = kc->kc_chain;
        (numtape < MAX_NUMTAPE) && (ksp_chain != NULL);
@@ -52,14 +56,15 @@ static int tape_init(void) {
     ksp[numtape++] = ksp_chain;
   }
 
-  return (0);
+  return 0;
 } /* int tape_init */
 
 static void tape_submit(const char *plugin_instance, const char *type,
                         derive_t read, derive_t write) {
   value_list_t vl = VALUE_LIST_INIT;
   value_t values[] = {
-      {.derive = read}, {.derive = write},
+      {.derive = read},
+      {.derive = write},
   };
 
   vl.values = values;
@@ -94,10 +99,10 @@ static int tape_read(void) {
   static kstat_io_t kio;
 
   if (kc == NULL)
-    return (-1);
+    return -1;
 
   if (numtape <= 0)
-    return (-1);
+    return -1;
 
   for (int i = 0; i < numtape; i++) {
     if (kstat_read(kc, ksp[i], &kio) == -1)
@@ -112,7 +117,7 @@ static int tape_read(void) {
     }
   }
 
-  return (0);
+  return 0;
 }
 
 void module_register(void) {

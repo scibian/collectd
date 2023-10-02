@@ -26,9 +26,9 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
-#include "utils_avltree.h"
+#include "utils/avltree/avltree.h"
+#include "utils/common/common.h"
 
 #if HAVE_NETDB_H
 #include <netdb.h>
@@ -84,19 +84,19 @@ struct metric_map_s {
 typedef struct metric_map_s metric_map_t;
 
 #define MC_RECEIVE_GROUP_DEFAULT "239.2.11.71"
-static char *mc_receive_group = NULL;
+static char *mc_receive_group;
 #define MC_RECEIVE_PORT_DEFAULT "8649"
-static char *mc_receive_port = NULL;
+static char *mc_receive_port;
 
-static struct pollfd *mc_receive_sockets = NULL;
-static size_t mc_receive_sockets_num = 0;
+static struct pollfd *mc_receive_sockets;
+static size_t mc_receive_sockets_num;
 
-static socket_entry_t *mc_send_sockets = NULL;
-static size_t mc_send_sockets_num = 0;
+static socket_entry_t *mc_send_sockets;
+static size_t mc_send_sockets_num;
 static pthread_mutex_t mc_send_sockets_lock = PTHREAD_MUTEX_INITIALIZER;
 
-static int mc_receive_thread_loop = 0;
-static int mc_receive_thread_running = 0;
+static int mc_receive_thread_loop;
+static int mc_receive_thread_running;
 static pthread_t mc_receive_thread_id;
 
 static metric_map_t metric_map_default[] =
@@ -122,8 +122,8 @@ static metric_map_t metric_map_default[] =
      {"pkts_out", "if_packets", "", "tx", -1, -1}};
 static size_t metric_map_len_default = STATIC_ARRAY_SIZE(metric_map_default);
 
-static metric_map_t *metric_map = NULL;
-static size_t metric_map_len = 0;
+static metric_map_t *metric_map;
+static size_t metric_map_len;
 
 static c_avl_tree_t *staging_tree;
 static pthread_mutex_t staging_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -152,7 +152,7 @@ static metric_map_t *metric_lookup(const char *key) /* {{{ */
   }
 
   if (i >= map_len)
-    return (NULL);
+    return NULL;
 
   /* Look up the DS type and ds_index. */
   if (map[i].ds_type < 0) /* {{{ */
@@ -162,14 +162,14 @@ static metric_map_t *metric_lookup(const char *key) /* {{{ */
     ds = plugin_get_ds(map[i].type);
     if (ds == NULL) {
       WARNING("gmond plugin: Type not defined: %s", map[i].type);
-      return (NULL);
+      return NULL;
     }
 
     if ((map[i].ds_name == NULL) && (ds->ds_num != 1)) {
       WARNING("gmond plugin: No data source name defined for metric %s, "
               "but type %s has more than one data source.",
               map[i].ganglia_name, map[i].type);
-      return (NULL);
+      return NULL;
     }
 
     if (map[i].ds_name == NULL) {
@@ -185,7 +185,7 @@ static metric_map_t *metric_lookup(const char *key) /* {{{ */
         WARNING("gmond plugin: There is no data source "
                 "named `%s' in type `%s'.",
                 map[i].ds_name, ds->type);
-        return (NULL);
+        return NULL;
       }
       map[i].ds_index = j;
     }
@@ -193,7 +193,7 @@ static metric_map_t *metric_lookup(const char *key) /* {{{ */
     map[i].ds_type = ds->ds[map[i].ds_index].type;
   } /* }}} if ((map[i].ds_type < 0) || (map[i].ds_index < 0)) */
 
-  return (map + i);
+  return map + i;
 } /* }}} metric_map_t *metric_lookup */
 
 static int create_sockets(socket_entry_t **ret_sockets, /* {{{ */
@@ -208,7 +208,7 @@ static int create_sockets(socket_entry_t **ret_sockets, /* {{{ */
   int status;
 
   if (*ret_sockets != NULL)
-    return (EINVAL);
+    return EINVAL;
 
   struct addrinfo ai_hints = {.ai_family = AF_UNSPEC,
                               .ai_flags = AI_ADDRCONFIG | AI_PASSIVE,
@@ -217,13 +217,11 @@ static int create_sockets(socket_entry_t **ret_sockets, /* {{{ */
 
   ai_return = getaddrinfo(node, service, &ai_hints, &ai_list);
   if (ai_return != 0) {
-    char errbuf[1024];
     ERROR("gmond plugin: getaddrinfo (%s, %s) failed: %s",
           (node == NULL) ? "(null)" : node,
           (service == NULL) ? "(null)" : service,
-          (ai_return == EAI_SYSTEM) ? sstrerror(errno, errbuf, sizeof(errbuf))
-                                    : gai_strerror(ai_return));
-    return (-1);
+          (ai_return == EAI_SYSTEM) ? STRERRNO : gai_strerror(ai_return));
+    return -1;
   }
 
   for (struct addrinfo *ai_ptr = ai_list; ai_ptr != NULL;
@@ -241,9 +239,7 @@ static int create_sockets(socket_entry_t **ret_sockets, /* {{{ */
     sockets[sockets_num].fd =
         socket(ai_ptr->ai_family, ai_ptr->ai_socktype, ai_ptr->ai_protocol);
     if (sockets[sockets_num].fd < 0) {
-      char errbuf[1024];
-      ERROR("gmond plugin: socket failed: %s",
-            sstrerror(errno, errbuf, sizeof(errbuf)));
+      ERROR("gmond plugin: socket failed: %s", STRERRNO);
       continue;
     }
 
@@ -256,22 +252,16 @@ static int create_sockets(socket_entry_t **ret_sockets, /* {{{ */
       sockets_num++;
       break;
     } else {
-      int yes = 1;
-
       status = setsockopt(sockets[sockets_num].fd, SOL_SOCKET, SO_REUSEADDR,
-                          (void *)&yes, sizeof(yes));
+                          &(int){1}, sizeof(int));
       if (status != 0) {
-        char errbuf[1024];
-        WARNING("gmond plugin: setsockopt(2) failed: %s",
-                sstrerror(errno, errbuf, sizeof(errbuf)));
+        WARNING("gmond plugin: setsockopt(2) failed: %s", STRERRNO);
       }
     }
 
     status = bind(sockets[sockets_num].fd, ai_ptr->ai_addr, ai_ptr->ai_addrlen);
     if (status != 0) {
-      char errbuf[1024];
-      ERROR("gmond plugin: bind failed: %s",
-            sstrerror(errno, errbuf, sizeof(errbuf)));
+      ERROR("gmond plugin: bind failed: %s", STRERRNO);
       close(sockets[sockets_num].fd);
       continue;
     }
@@ -291,9 +281,7 @@ static int create_sockets(socket_entry_t **ret_sockets, /* {{{ */
       status = setsockopt(sockets[sockets_num].fd, IPPROTO_IP,
                           IP_MULTICAST_LOOP, (void *)&loop, sizeof(loop));
       if (status != 0) {
-        char errbuf[1024];
-        WARNING("gmond plugin: setsockopt(2) failed: %s",
-                sstrerror(errno, errbuf, sizeof(errbuf)));
+        WARNING("gmond plugin: setsockopt(2) failed: %s", STRERRNO);
       }
 
       struct ip_mreq mreq = {.imr_multiaddr.s_addr = addr->sin_addr.s_addr,
@@ -302,9 +290,7 @@ static int create_sockets(socket_entry_t **ret_sockets, /* {{{ */
       status = setsockopt(sockets[sockets_num].fd, IPPROTO_IP,
                           IP_ADD_MEMBERSHIP, (void *)&mreq, sizeof(mreq));
       if (status != 0) {
-        char errbuf[1024];
-        WARNING("gmond plugin: setsockopt(2) failed: %s",
-                sstrerror(errno, errbuf, sizeof(errbuf)));
+        WARNING("gmond plugin: setsockopt(2) failed: %s", STRERRNO);
       }
     } /* if (ai_ptr->ai_family == AF_INET) */
     else if (ai_ptr->ai_family == AF_INET6) {
@@ -322,9 +308,7 @@ static int create_sockets(socket_entry_t **ret_sockets, /* {{{ */
       status = setsockopt(sockets[sockets_num].fd, IPPROTO_IPV6,
                           IPV6_MULTICAST_LOOP, (void *)&loop, sizeof(loop));
       if (status != 0) {
-        char errbuf[1024];
-        WARNING("gmond plugin: setsockopt(2) failed: %s",
-                sstrerror(errno, errbuf, sizeof(errbuf)));
+        WARNING("gmond plugin: setsockopt(2) failed: %s", STRERRNO);
       }
 
       struct ipv6_mreq mreq = {
@@ -335,9 +319,7 @@ static int create_sockets(socket_entry_t **ret_sockets, /* {{{ */
       status = setsockopt(sockets[sockets_num].fd, IPPROTO_IPV6,
                           IPV6_ADD_MEMBERSHIP, (void *)&mreq, sizeof(mreq));
       if (status != 0) {
-        char errbuf[1024];
-        WARNING("gmond plugin: setsockopt(2) failed: %s",
-                sstrerror(errno, errbuf, sizeof(errbuf)));
+        WARNING("gmond plugin: setsockopt(2) failed: %s", STRERRNO);
       }
     } /* if (ai_ptr->ai_family == AF_INET6) */
 
@@ -348,12 +330,12 @@ static int create_sockets(socket_entry_t **ret_sockets, /* {{{ */
 
   if (sockets_num == 0) {
     sfree(sockets);
-    return (-1);
+    return -1;
   }
 
   *ret_sockets = sockets;
   *ret_sockets_num = sockets_num;
-  return (0);
+  return 0;
 } /* }}} int create_sockets */
 
 static int request_meta_data(const char *host, const char *name) /* {{{ */
@@ -371,7 +353,7 @@ static int request_meta_data(const char *host, const char *name) /* {{{ */
       (msg.Ganglia_metadata_msg_u.grequest.metric_id.name == NULL)) {
     sfree(msg.Ganglia_metadata_msg_u.grequest.metric_id.host);
     sfree(msg.Ganglia_metadata_msg_u.grequest.metric_id.name);
-    return (-1);
+    return -1;
   }
 
   xdrmem_create(&xdr, buffer, sizeof(buffer), XDR_ENCODE);
@@ -379,7 +361,7 @@ static int request_meta_data(const char *host, const char *name) /* {{{ */
   if (!xdr_Ganglia_metadata_msg(&xdr, &msg)) {
     sfree(msg.Ganglia_metadata_msg_u.grequest.metric_id.host);
     sfree(msg.Ganglia_metadata_msg_u.grequest.metric_id.name);
-    return (-1);
+    return -1;
   }
 
   buffer_size = xdr_getpos(&xdr);
@@ -393,9 +375,7 @@ static int request_meta_data(const char *host, const char *name) /* {{{ */
                /* flags = */ 0, (struct sockaddr *)&mc_send_sockets[i].addr,
                mc_send_sockets[i].addrlen);
     if (status == -1) {
-      char errbuf[1024];
-      ERROR("gmond plugin: sendto(2) failed: %s",
-            sstrerror(errno, errbuf, sizeof(errbuf)));
+      ERROR("gmond plugin: sendto(2) failed: %s", STRERRNO);
       continue;
     }
   }
@@ -403,7 +383,7 @@ static int request_meta_data(const char *host, const char *name) /* {{{ */
 
   sfree(msg.Ganglia_metadata_msg_u.grequest.metric_id.host);
   sfree(msg.Ganglia_metadata_msg_u.grequest.metric_id.name);
-  return (0);
+  return 0;
 } /* }}} int request_meta_data */
 
 static staging_entry_t *staging_entry_get(const char *host, /* {{{ */
@@ -415,7 +395,7 @@ static staging_entry_t *staging_entry_get(const char *host, /* {{{ */
   int status;
 
   if (staging_tree == NULL)
-    return (NULL);
+    return NULL;
 
   ssnprintf(key, sizeof(key), "%s/%s/%s", host, type,
             (type_instance != NULL) ? type_instance : "");
@@ -423,20 +403,20 @@ static staging_entry_t *staging_entry_get(const char *host, /* {{{ */
   se = NULL;
   status = c_avl_get(staging_tree, key, (void *)&se);
   if (status == 0)
-    return (se);
+    return se;
 
   /* insert new entry */
   se = calloc(1, sizeof(*se));
   if (se == NULL)
-    return (NULL);
+    return NULL;
 
   sstrncpy(se->key, key, sizeof(se->key));
   se->flags = 0;
 
-  se->vl.values = (value_t *)calloc(values_len, sizeof(*se->vl.values));
+  se->vl.values = calloc(values_len, sizeof(*se->vl.values));
   if (se->vl.values == NULL) {
     sfree(se);
-    return (NULL);
+    return NULL;
   }
   se->vl.values_len = values_len;
 
@@ -453,10 +433,10 @@ static staging_entry_t *staging_entry_get(const char *host, /* {{{ */
     ERROR("gmond plugin: c_avl_insert failed.");
     sfree(se->vl.values);
     sfree(se);
-    return (NULL);
+    return NULL;
   }
 
-  return (se);
+  return se;
 } /* }}} staging_entry_t *staging_entry_get */
 
 static int staging_entry_update(const char *host, const char *name, /* {{{ */
@@ -468,13 +448,14 @@ static int staging_entry_update(const char *host, const char *name, /* {{{ */
   ds = plugin_get_ds(type);
   if (ds == NULL) {
     ERROR("gmond plugin: Looking up type %s failed.", type);
-    return (-1);
+    return -1;
   }
 
   if (ds->ds_num <= ds_index) {
-    ERROR("gmond plugin: Invalid index %zu: %s has only %zu data source(s).",
+    ERROR("gmond plugin: Invalid index %" PRIsz ": %s has only %" PRIsz
+          " data source(s).",
           ds_index, ds->type, ds->ds_num);
-    return (-1);
+    return -1;
   }
 
   pthread_mutex_lock(&staging_lock);
@@ -483,11 +464,11 @@ static int staging_entry_update(const char *host, const char *name, /* {{{ */
   if (se == NULL) {
     pthread_mutex_unlock(&staging_lock);
     ERROR("gmond plugin: staging_entry_get failed.");
-    return (-1);
+    return -1;
   }
   if (se->vl.values_len != ds->ds_num) {
     pthread_mutex_unlock(&staging_lock);
-    return (-1);
+    return -1;
   }
 
   if (ds_type == DS_TYPE_COUNTER)
@@ -506,7 +487,7 @@ static int staging_entry_update(const char *host, const char *name, /* {{{ */
   /* Check if all data sources have been set. If not, return here. */
   if (se->flags != ((0x01 << se->vl.values_len) - 1)) {
     pthread_mutex_unlock(&staging_lock);
-    return (0);
+    return 0;
   }
 
   /* Check if the interval of this metric is known. If not, request meta data
@@ -517,7 +498,7 @@ static int staging_entry_update(const char *host, const char *name, /* {{{ */
     pthread_mutex_unlock(&staging_lock);
 
     request_meta_data(host, name);
-    return (0);
+    return 0;
   }
 
   plugin_dispatch_values(&se->vl);
@@ -525,7 +506,7 @@ static int staging_entry_update(const char *host, const char *name, /* {{{ */
   se->flags = 0;
   pthread_mutex_unlock(&staging_lock);
 
-  return (0);
+  return 0;
 } /* }}} int staging_entry_update */
 
 static int mc_handle_value_msg(Ganglia_value_msg *msg) /* {{{ */
@@ -606,7 +587,7 @@ static int mc_handle_value_msg(Ganglia_value_msg *msg) /* {{{ */
   }
   default:
     DEBUG("gmond plugin: Value type not handled: %i", msg->id);
-    return (-1);
+    return -1;
   } /* }}} switch (msg->id) */
 
   assert(host != NULL);
@@ -625,12 +606,12 @@ static int mc_handle_value_msg(Ganglia_value_msg *msg) /* {{{ */
     else
       assert(23 == 42);
 
-    return (staging_entry_update(host, name, map->type, map->type_instance,
-                                 map->ds_index, map->ds_type, val_copy));
+    return staging_entry_update(host, name, map->type, map->type_instance,
+                                map->ds_index, map->ds_type, val_copy);
   }
 
   DEBUG("gmond plugin: Cannot find a translation for %s.", name);
-  return (-1);
+  return -1;
 } /* }}} int mc_handle_value_msg */
 
 static int mc_handle_metadata_msg(Ganglia_metadata_msg *msg) /* {{{ */
@@ -645,19 +626,19 @@ static int mc_handle_metadata_msg(Ganglia_metadata_msg *msg) /* {{{ */
     msg_meta = msg->Ganglia_metadata_msg_u.gfull;
 
     if (msg_meta.metric.tmax == 0)
-      return (-1);
+      return -1;
 
     map = metric_lookup(msg_meta.metric_id.name);
     if (map == NULL) {
       DEBUG("gmond plugin: Not handling meta data %s.",
             msg_meta.metric_id.name);
-      return (0);
+      return 0;
     }
 
     ds = plugin_get_ds(map->type);
     if (ds == NULL) {
       WARNING("gmond plugin: Could not find data set %s.", map->type);
-      return (-1);
+      return -1;
     }
 
     DEBUG("gmond plugin: Received meta data for %s/%s.",
@@ -672,16 +653,16 @@ static int mc_handle_metadata_msg(Ganglia_metadata_msg *msg) /* {{{ */
 
     if (se == NULL) {
       ERROR("gmond plugin: staging_entry_get failed.");
-      return (-1);
+      return -1;
     }
 
     break;
   }
 
-  default: { return (-1); }
+  default: { return -1; }
   }
 
-  return (0);
+  return 0;
 } /* }}} int mc_handle_metadata_msg */
 
 static int mc_handle_metric(void *buffer, size_t buffer_size) /* {{{ */
@@ -719,10 +700,10 @@ static int mc_handle_metric(void *buffer, size_t buffer_size) /* {{{ */
 
   default:
     DEBUG("gmond plugin: Unknown format: %i", format);
-    return (-1);
+    return -1;
   } /* switch (format) */
 
-  return (0);
+  return 0;
 } /* }}} int mc_handle_metric */
 
 static int mc_handle_socket(struct pollfd *p) /* {{{ */
@@ -732,20 +713,18 @@ static int mc_handle_socket(struct pollfd *p) /* {{{ */
 
   if ((p->revents & (POLLIN | POLLPRI)) == 0) {
     p->revents = 0;
-    return (-1);
+    return -1;
   }
 
   buffer_size = recv(p->fd, buffer, sizeof(buffer), /* flags = */ 0);
   if (buffer_size <= 0) {
-    char errbuf[1024];
-    ERROR("gmond plugin: recv failed: %s",
-          sstrerror(errno, errbuf, sizeof(errbuf)));
+    ERROR("gmond plugin: recv failed: %s", STRERRNO);
     p->revents = 0;
-    return (-1);
+    return -1;
   }
 
   mc_handle_metric(buffer, (size_t)buffer_size);
-  return (0);
+  return 0;
 } /* }}} int mc_handle_socket */
 
 static void *mc_receive_thread(void *arg) /* {{{ */
@@ -761,11 +740,11 @@ static void *mc_receive_thread(void *arg) /* {{{ */
       /* listen = */ 1);
   if (status != 0) {
     ERROR("gmond plugin: create_sockets failed.");
-    return ((void *)-1);
+    return (void *)-1;
   }
 
-  mc_receive_sockets = (struct pollfd *)calloc(mc_receive_sockets_num,
-                                               sizeof(*mc_receive_sockets));
+  mc_receive_sockets =
+      calloc(mc_receive_sockets_num, sizeof(*mc_receive_sockets));
   if (mc_receive_sockets == NULL) {
     ERROR("gmond plugin: calloc failed.");
     for (size_t i = 0; i < mc_receive_sockets_num; i++)
@@ -773,7 +752,7 @@ static void *mc_receive_thread(void *arg) /* {{{ */
     free(mc_receive_socket_entries);
     mc_receive_socket_entries = NULL;
     mc_receive_sockets_num = 0;
-    return ((void *)-1);
+    return (void *)-1;
   }
 
   for (size_t i = 0; i < mc_receive_sockets_num; i++) {
@@ -785,11 +764,9 @@ static void *mc_receive_thread(void *arg) /* {{{ */
   while (mc_receive_thread_loop != 0) {
     status = poll(mc_receive_sockets, mc_receive_sockets_num, -1);
     if (status <= 0) {
-      char errbuf[1024];
       if (errno == EINTR)
         continue;
-      ERROR("gmond plugin: poll failed: %s",
-            sstrerror(errno, errbuf, sizeof(errbuf)));
+      ERROR("gmond plugin: poll failed: %s", STRERRNO);
       break;
     }
 
@@ -800,7 +777,7 @@ static void *mc_receive_thread(void *arg) /* {{{ */
   } /* while (mc_receive_thread_loop != 0) */
 
   free(mc_receive_socket_entries);
-  return ((void *)0);
+  return (void *)0;
 } /* }}} void *mc_receive_thread */
 
 static int mc_receive_thread_start(void) /* {{{ */
@@ -808,7 +785,7 @@ static int mc_receive_thread_start(void) /* {{{ */
   int status;
 
   if (mc_receive_thread_running != 0)
-    return (-1);
+    return -1;
 
   mc_receive_thread_loop = 1;
 
@@ -818,17 +795,17 @@ static int mc_receive_thread_start(void) /* {{{ */
   if (status != 0) {
     ERROR("gmond plugin: Starting receive thread failed.");
     mc_receive_thread_loop = 0;
-    return (-1);
+    return -1;
   }
 
   mc_receive_thread_running = 1;
-  return (0);
+  return 0;
 } /* }}} int start_receive_thread */
 
 static int mc_receive_thread_stop(void) /* {{{ */
 {
   if (mc_receive_thread_running == 0)
-    return (-1);
+    return -1;
 
   mc_receive_thread_loop = 0;
 
@@ -839,7 +816,7 @@ static int mc_receive_thread_stop(void) /* {{{ */
 
   mc_receive_thread_running = 0;
 
-  return (0);
+  return 0;
 } /* }}} int mc_receive_thread_stop */
 
 /*
@@ -854,28 +831,6 @@ static int mc_receive_thread_stop(void) /* {{{ */
  *   </Metric>
  * </Plugin>
  */
-static int gmond_config_set_string(oconfig_item_t *ci, char **str) /* {{{ */
-{
-  char *tmp;
-
-  if ((ci->values_num != 1) || (ci->values[0].type != OCONFIG_TYPE_STRING)) {
-    WARNING("gmond plugin: The `%s' option needs "
-            "exactly one string argument.",
-            ci->key);
-    return (-1);
-  }
-
-  tmp = strdup(ci->values[0].value.string);
-  if (tmp == NULL) {
-    ERROR("gmond plugin: strdup failed.");
-    return (-1);
-  }
-
-  sfree(*str);
-  *str = tmp;
-  return (0);
-} /* }}} int gmond_config_set_string */
-
 static int gmond_config_add_metric(oconfig_item_t *ci) /* {{{ */
 {
   metric_map_t *map;
@@ -883,13 +838,13 @@ static int gmond_config_add_metric(oconfig_item_t *ci) /* {{{ */
   if ((ci->values_num != 1) || (ci->values[0].type != OCONFIG_TYPE_STRING)) {
     WARNING("gmond plugin: `Metric' blocks need "
             "exactly one string argument.");
-    return (-1);
+    return -1;
   }
 
   map = realloc(metric_map, (metric_map_len + 1) * sizeof(*metric_map));
   if (map == NULL) {
     ERROR("gmond plugin: realloc failed.");
-    return (-1);
+    return -1;
   }
   metric_map = map;
   map = metric_map + metric_map_len;
@@ -904,17 +859,17 @@ static int gmond_config_add_metric(oconfig_item_t *ci) /* {{{ */
   map->ganglia_name = strdup(ci->values[0].value.string);
   if (map->ganglia_name == NULL) {
     ERROR("gmond plugin: strdup failed.");
-    return (-1);
+    return -1;
   }
 
   for (int i = 0; i < ci->children_num; i++) {
     oconfig_item_t *child = ci->children + i;
     if (strcasecmp("Type", child->key) == 0)
-      gmond_config_set_string(child, &map->type);
+      cf_util_get_string(child, &map->type);
     else if (strcasecmp("TypeInstance", child->key) == 0)
-      gmond_config_set_string(child, &map->type_instance);
+      cf_util_get_string(child, &map->type_instance);
     else if (strcasecmp("DataSource", child->key) == 0)
-      gmond_config_set_string(child, &map->ds_name);
+      cf_util_get_string(child, &map->ds_name);
     else {
       WARNING("gmond plugin: Unknown configuration option `%s' ignored.",
               child->key);
@@ -925,11 +880,11 @@ static int gmond_config_add_metric(oconfig_item_t *ci) /* {{{ */
     ERROR("gmond plugin: No type is set for metric %s.", map->ganglia_name);
     sfree(map->ganglia_name);
     sfree(map->type_instance);
-    return (-1);
+    return -1;
   }
 
   metric_map_len++;
-  return (0);
+  return 0;
 } /* }}} int gmond_config_add_metric */
 
 static int gmond_config_set_address(oconfig_item_t *ci, /* {{{ */
@@ -941,14 +896,14 @@ static int gmond_config_set_address(oconfig_item_t *ci, /* {{{ */
     WARNING("gmond plugin: The `%s' config option needs "
             "one or two string arguments.",
             ci->key);
-    return (-1);
+    return -1;
   }
   if ((ci->values[0].type != OCONFIG_TYPE_STRING) ||
       ((ci->values_num == 2) && (ci->values[1].type != OCONFIG_TYPE_STRING))) {
     WARNING("gmond plugin: The `%s' config option needs "
             "one or two string arguments.",
             ci->key);
-    return (-1);
+    return -1;
   }
 
   addr = strdup(ci->values[0].value.string);
@@ -961,7 +916,7 @@ static int gmond_config_set_address(oconfig_item_t *ci, /* {{{ */
     ERROR("gmond plugin: strdup failed.");
     sfree(addr);
     sfree(port);
-    return (-1);
+    return -1;
   }
 
   sfree(*ret_addr);
@@ -970,7 +925,7 @@ static int gmond_config_set_address(oconfig_item_t *ci, /* {{{ */
   *ret_addr = addr;
   *ret_port = port;
 
-  return (0);
+  return 0;
 } /* }}} int gmond_config_set_address */
 
 static int gmond_config(oconfig_item_t *ci) /* {{{ */
@@ -987,7 +942,7 @@ static int gmond_config(oconfig_item_t *ci) /* {{{ */
     }
   }
 
-  return (0);
+  return 0;
 } /* }}} int gmond_config */
 
 static int gmond_init(void) /* {{{ */
@@ -1001,12 +956,12 @@ static int gmond_init(void) /* {{{ */
   staging_tree = c_avl_create((int (*)(const void *, const void *))strcmp);
   if (staging_tree == NULL) {
     ERROR("gmond plugin: c_avl_create failed.");
-    return (-1);
+    return -1;
   }
 
   mc_receive_thread_start();
 
-  return (0);
+  return 0;
 } /* }}} int gmond_init */
 
 static int gmond_shutdown(void) /* {{{ */
@@ -1022,7 +977,7 @@ static int gmond_shutdown(void) /* {{{ */
   mc_send_sockets_num = 0;
   pthread_mutex_unlock(&mc_send_sockets_lock);
 
-  return (0);
+  return 0;
 } /* }}} int gmond_shutdown */
 
 void module_register(void) {
@@ -1030,5 +985,3 @@ void module_register(void) {
   plugin_register_init("gmond", gmond_init);
   plugin_register_shutdown("gmond", gmond_shutdown);
 }
-
-/* vim: set sw=2 sts=2 et fdm=marker : */

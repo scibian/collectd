@@ -25,8 +25,8 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 
 #include <netdb.h>
 #include <poll.h>
@@ -99,15 +99,15 @@ typedef struct pinba_statnode_s pinba_statnode_t;
  * Module global variables
  */
 /* {{{ */
-static pinba_statnode_t *stat_nodes = NULL;
-static unsigned int stat_nodes_num = 0;
+static pinba_statnode_t *stat_nodes;
+static unsigned int stat_nodes_num;
 static pthread_mutex_t stat_nodes_lock;
 
-static char *conf_node = NULL;
-static char *conf_service = NULL;
+static char *conf_node;
+static char *conf_service;
 
-static _Bool collector_thread_running = 0;
-static _Bool collector_thread_do_shutdown = 0;
+static bool collector_thread_running;
+static bool collector_thread_do_shutdown;
 static pthread_t collector_thread_id;
 /* }}} */
 
@@ -141,7 +141,7 @@ static derive_t float_counter_get(const float_counter_t *fc, /* {{{ */
   ret = (derive_t)(fc->i * factor);
   ret += (derive_t)(fc->n / (1000000000 / factor));
 
-  return (ret);
+  return ret;
 } /* }}} derive_t float_counter_get */
 
 static void strset(char **str, const char *new) /* {{{ */
@@ -218,7 +218,7 @@ static unsigned int service_statnode_collect(pinba_statnode_t *res, /* {{{ */
   /* reset node */
   node->mem_peak = NAN;
 
-  return (index + 1);
+  return index + 1;
 } /* }}} unsigned int service_statnode_collect */
 
 static void service_statnode_process(pinba_statnode_t *node, /* {{{ */
@@ -263,7 +263,7 @@ static void service_process_request(Pinba__Request *request) /* {{{ */
 static int pb_del_socket(pinba_socket_t *s, /* {{{ */
                          nfds_t index) {
   if (index >= s->fd_num)
-    return (EINVAL);
+    return EINVAL;
 
   close(s->fd[index].fd);
   s->fd[index].fd = -1;
@@ -275,46 +275,36 @@ static int pb_del_socket(pinba_socket_t *s, /* {{{ */
   }
 
   s->fd_num--;
-  return (0);
+  return 0;
 } /* }}} int pb_del_socket */
 
 static int pb_add_socket(pinba_socket_t *s, /* {{{ */
                          const struct addrinfo *ai) {
-  int fd;
-  int tmp;
-  int status;
 
   if (s->fd_num == PINBA_MAX_SOCKETS) {
     WARNING("pinba plugin: Sorry, you have hit the built-in limit of "
             "%i sockets. Please complain to the collectd developers so we can "
             "raise the limit.",
             PINBA_MAX_SOCKETS);
-    return (-1);
+    return -1;
   }
 
-  fd = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
+  int fd = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
   if (fd < 0) {
-    char errbuf[1024];
-    ERROR("pinba plugin: socket(2) failed: %s",
-          sstrerror(errno, errbuf, sizeof(errbuf)));
-    return (0);
+    ERROR("pinba plugin: socket(2) failed: %s", STRERRNO);
+    return 0;
   }
 
-  tmp = 1;
-  status = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &tmp, sizeof(tmp));
+  int status = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int));
   if (status != 0) {
-    char errbuf[1024];
-    WARNING("pinba plugin: setsockopt(SO_REUSEADDR) failed: %s",
-            sstrerror(errno, errbuf, sizeof(errbuf)));
+    WARNING("pinba plugin: setsockopt(SO_REUSEADDR) failed: %s", STRERRNO);
   }
 
   status = bind(fd, ai->ai_addr, ai->ai_addrlen);
   if (status != 0) {
-    char errbuf[1024];
-    ERROR("pinba plugin: bind(2) failed: %s",
-          sstrerror(errno, errbuf, sizeof(errbuf)));
+    ERROR("pinba plugin: bind(2) failed: %s", STRERRNO);
     close(fd);
-    return (0);
+    return 0;
   }
 
   s->fd[s->fd_num].fd = fd;
@@ -322,7 +312,7 @@ static int pb_add_socket(pinba_socket_t *s, /* {{{ */
   s->fd[s->fd_num].revents = 0;
   s->fd_num++;
 
-  return (0);
+  return 0;
 } /* }}} int pb_add_socket */
 
 static pinba_socket_t *pinba_socket_open(const char *node, /* {{{ */
@@ -344,7 +334,7 @@ static pinba_socket_t *pinba_socket_open(const char *node, /* {{{ */
   status = getaddrinfo(node, service, &ai_hints, &ai_list);
   if (status != 0) {
     ERROR("pinba plugin: getaddrinfo(3) failed: %s", gai_strerror(status));
-    return (NULL);
+    return NULL;
   }
   assert(ai_list != NULL);
 
@@ -352,7 +342,7 @@ static pinba_socket_t *pinba_socket_open(const char *node, /* {{{ */
   if (s == NULL) {
     freeaddrinfo(ai_list);
     ERROR("pinba plugin: calloc failed.");
-    return (NULL);
+    return NULL;
   }
 
   for (struct addrinfo *ai_ptr = ai_list; ai_ptr != NULL;
@@ -370,7 +360,7 @@ static pinba_socket_t *pinba_socket_open(const char *node, /* {{{ */
     s = NULL;
   }
 
-  return (s);
+  return s;
 } /* }}} pinba_socket_open */
 
 static void pinba_socket_free(pinba_socket_t *socket) /* {{{ */
@@ -395,12 +385,12 @@ static int pinba_process_stats_packet(const uint8_t *buffer, /* {{{ */
   request = pinba__request__unpack(NULL, buffer_size, buffer);
 
   if (!request)
-    return (-1);
+    return -1;
 
   service_process_request(request);
   pinba__request__free_unpacked(request, NULL);
 
-  return (0);
+  return 0;
 } /* }}} int pinba_process_stats_packet */
 
 static int pinba_udp_read_callback_fn(int sock) /* {{{ */
@@ -414,7 +404,6 @@ static int pinba_udp_read_callback_fn(int sock) /* {{{ */
     status = recvfrom(sock, buffer, buffer_size - 1, MSG_DONTWAIT,
                       /* from = */ NULL, /* from len = */ 0);
     if (status < 0) {
-      char errbuf[1024];
 
       if ((errno == EINTR)
 #ifdef EWOULDBLOCK
@@ -424,12 +413,11 @@ static int pinba_udp_read_callback_fn(int sock) /* {{{ */
         continue;
       }
 
-      WARNING("pinba plugin: recvfrom(2) failed: %s",
-              sstrerror(errno, errbuf, sizeof(errbuf)));
-      return (-1);
+      WARNING("pinba plugin: recvfrom(2) failed: %s", STRERRNO);
+      return -1;
     } else if (status == 0) {
       DEBUG("pinba plugin: recvfrom(2) returned unexpected status zero.");
-      return (-1);
+      return -1;
     } else /* if (status > 0) */
     {
       assert(((size_t)status) < buffer_size);
@@ -439,13 +427,13 @@ static int pinba_udp_read_callback_fn(int sock) /* {{{ */
       status = pinba_process_stats_packet(buffer, buffer_size);
       if (status != 0)
         DEBUG("pinba plugin: Parsing packet failed.");
-      return (status);
+      return status;
     }
   } /* while (42) */
 
   /* not reached */
   assert(23 == 42);
-  return (-1);
+  return -1;
 } /* }}} void pinba_udp_read_callback_fn */
 
 static int receive_loop(void) /* {{{ */
@@ -455,7 +443,7 @@ static int receive_loop(void) /* {{{ */
   s = pinba_socket_open(conf_node, conf_service);
   if (s == NULL) {
     ERROR("pinba plugin: Collector thread is exiting prematurely.");
-    return (-1);
+    return -1;
   }
 
   while (!collector_thread_do_shutdown) {
@@ -469,15 +457,12 @@ static int receive_loop(void) /* {{{ */
     {
       continue;
     } else if (status < 0) {
-      char errbuf[1024];
-
       if ((errno == EINTR) || (errno == EAGAIN))
         continue;
 
-      ERROR("pinba plugin: poll(2) failed: %s",
-            sstrerror(errno, errbuf, sizeof(errbuf)));
+      ERROR("pinba plugin: poll(2) failed: %s", STRERRNO);
       pinba_socket_free(s);
-      return (-1);
+      return -1;
     }
 
     for (nfds_t i = 0; i < s->fd_num; i++) {
@@ -493,7 +478,7 @@ static int receive_loop(void) /* {{{ */
   pinba_socket_free(s);
   s = NULL;
 
-  return (0);
+  return 0;
 } /* }}} int receive_loop */
 
 static void *collector_thread(void *arg) /* {{{ */
@@ -501,9 +486,9 @@ static void *collector_thread(void *arg) /* {{{ */
   receive_loop();
 
   memset(&collector_thread_id, 0, sizeof(collector_thread_id));
-  collector_thread_running = 0;
+  collector_thread_running = false;
   pthread_exit(NULL);
-  return (NULL);
+  return NULL;
 } /* }}} void *collector_thread */
 
 /*
@@ -519,7 +504,7 @@ static int pinba_config_view(const oconfig_item_t *ci) /* {{{ */
 
   status = cf_util_get_string(ci, &name);
   if (status != 0)
-    return (status);
+    return status;
 
   for (int i = 0; i < ci->children_num; i++) {
     oconfig_item_t *child = ci->children + i;
@@ -547,7 +532,7 @@ static int pinba_config_view(const oconfig_item_t *ci) /* {{{ */
   sfree(server);
   sfree(script);
 
-  return (status);
+  return status;
 } /* }}} int pinba_config_view */
 
 static int plugin_config(oconfig_item_t *ci) /* {{{ */
@@ -571,7 +556,7 @@ static int plugin_config(oconfig_item_t *ci) /* {{{ */
 
   pthread_mutex_unlock(&stat_nodes_lock);
 
-  return (0);
+  return 0;
 } /* }}} int pinba_config */
 
 static int plugin_init(void) /* {{{ */
@@ -587,20 +572,18 @@ static int plugin_init(void) /* {{{ */
   }
 
   if (collector_thread_running)
-    return (0);
+    return 0;
 
   status = plugin_thread_create(&collector_thread_id,
                                 /* attrs = */ NULL, collector_thread,
                                 /* args = */ NULL, "pinba collector");
   if (status != 0) {
-    char errbuf[1024];
-    ERROR("pinba plugin: pthread_create(3) failed: %s",
-          sstrerror(errno, errbuf, sizeof(errbuf)));
-    return (-1);
+    ERROR("pinba plugin: pthread_create(3) failed: %s", STRERRNO);
+    return -1;
   }
-  collector_thread_running = 1;
+  collector_thread_running = true;
 
-  return (0);
+  return 0;
 } /* }}} */
 
 static int plugin_shutdown(void) /* {{{ */
@@ -609,20 +592,18 @@ static int plugin_shutdown(void) /* {{{ */
     int status;
 
     DEBUG("pinba plugin: Shutting down collector thread.");
-    collector_thread_do_shutdown = 1;
+    collector_thread_do_shutdown = true;
 
     status = pthread_join(collector_thread_id, /* retval = */ NULL);
     if (status != 0) {
-      char errbuf[1024];
-      ERROR("pinba plugin: pthread_join(3) failed: %s",
-            sstrerror(status, errbuf, sizeof(errbuf)));
+      ERROR("pinba plugin: pthread_join(3) failed: %s", STRERROR(status));
     }
 
-    collector_thread_running = 0;
-    collector_thread_do_shutdown = 0;
+    collector_thread_running = false;
+    collector_thread_do_shutdown = false;
   } /* if (collector_thread_running) */
 
-  return (0);
+  return 0;
 } /* }}} int plugin_shutdown */
 
 static int plugin_submit(const pinba_statnode_t *res) /* {{{ */
@@ -663,7 +644,7 @@ static int plugin_submit(const pinba_statnode_t *res) /* {{{ */
   sstrncpy(vl.type_instance, "peak", sizeof(vl.type_instance));
   plugin_dispatch_values(&vl);
 
-  return (0);
+  return 0;
 } /* }}} int plugin_submit */
 
 static int plugin_read(void) /* {{{ */
@@ -685,5 +666,3 @@ void module_register(void) /* {{{ */
   plugin_register_read("pinba", plugin_read);
   plugin_register_shutdown("pinba", plugin_shutdown);
 } /* }}} void module_register */
-
-/* vim: set sw=2 sts=2 et fdm=marker : */

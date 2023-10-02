@@ -23,8 +23,8 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -46,14 +46,14 @@ typedef struct vserver_list_s {
   int port;
   struct vserver_list_s *next;
 } vserver_list_t;
-static vserver_list_t *server_list = NULL;
+static vserver_list_t *server_list;
 
 /* Host data */
-static char *config_host = NULL;
-static char *config_port = NULL;
+static char *config_host;
+static char *config_port;
 
-static FILE *global_read_fh = NULL;
-static FILE *global_write_fh = NULL;
+static FILE *global_read_fh;
+static FILE *global_write_fh;
 
 /* Config data */
 static const char *config_keys[] = {"Host", "Port", "Server"};
@@ -71,14 +71,14 @@ static int tss2_add_vserver(int vserver_port) {
   /* Check port range */
   if ((vserver_port <= 0) || (vserver_port > 65535)) {
     ERROR("teamspeak2 plugin: VServer port is invalid: %i", vserver_port);
-    return (-1);
+    return -1;
   }
 
   /* Allocate memory */
   entry = calloc(1, sizeof(*entry));
   if (entry == NULL) {
     ERROR("teamspeak2 plugin: calloc failed.");
-    return (-1);
+    return -1;
   }
 
   /* Save data */
@@ -100,7 +100,7 @@ static int tss2_add_vserver(int vserver_port) {
 
   INFO("teamspeak2 plugin: Registered new vserver: %i", vserver_port);
 
-  return (0);
+  return 0;
 } /* int tss2_add_vserver */
 
 static void tss2_submit_gauge(const char *plugin_instance, const char *type,
@@ -132,7 +132,8 @@ static void tss2_submit_io(const char *plugin_instance, const char *type,
    */
   value_list_t vl = VALUE_LIST_INIT;
   value_t values[] = {
-      {.derive = rx}, {.derive = tx},
+      {.derive = rx},
+      {.derive = tx},
   };
 
   vl.values = values;
@@ -182,7 +183,7 @@ static int tss2_get_socket(FILE **ret_read_fh, FILE **ret_write_fh) {
       *ret_read_fh = global_read_fh;
     if (ret_write_fh != NULL)
       *ret_write_fh = global_write_fh;
-    return (0);
+    return 0;
   }
 
   /* Get all addrs for this hostname */
@@ -195,7 +196,7 @@ static int tss2_get_socket(FILE **ret_read_fh, FILE **ret_write_fh) {
                        &ai_hints, &ai_head);
   if (status != 0) {
     ERROR("teamspeak2 plugin: getaddrinfo failed: %s", gai_strerror(status));
-    return (-1);
+    return -1;
   }
 
   /* Try all given hosts until we can connect to one */
@@ -204,18 +205,14 @@ static int tss2_get_socket(FILE **ret_read_fh, FILE **ret_write_fh) {
     /* Create socket */
     sd = socket(ai_ptr->ai_family, ai_ptr->ai_socktype, ai_ptr->ai_protocol);
     if (sd < 0) {
-      char errbuf[1024];
-      WARNING("teamspeak2 plugin: socket failed: %s",
-              sstrerror(errno, errbuf, sizeof(errbuf)));
+      WARNING("teamspeak2 plugin: socket failed: %s", STRERRNO);
       continue;
     }
 
     /* Try to connect */
     status = connect(sd, ai_ptr->ai_addr, ai_ptr->ai_addrlen);
     if (status != 0) {
-      char errbuf[1024];
-      WARNING("teamspeak2 plugin: connect failed: %s",
-              sstrerror(errno, errbuf, sizeof(errbuf)));
+      WARNING("teamspeak2 plugin: connect failed: %s", STRERRNO);
       close(sd);
       sd = -1;
       continue;
@@ -231,25 +228,21 @@ static int tss2_get_socket(FILE **ret_read_fh, FILE **ret_write_fh) {
 
   /* Check if we really got connected */
   if (sd < 0)
-    return (-1);
+    return -1;
 
   /* Create file objects from sockets */
   global_read_fh = fdopen(sd, "r");
   if (global_read_fh == NULL) {
-    char errbuf[1024];
-    ERROR("teamspeak2 plugin: fdopen failed: %s",
-          sstrerror(errno, errbuf, sizeof(errbuf)));
+    ERROR("teamspeak2 plugin: fdopen failed: %s", STRERRNO);
     close(sd);
-    return (-1);
+    return -1;
   }
 
   global_write_fh = fdopen(sd, "w");
   if (global_write_fh == NULL) {
-    char errbuf[1024];
-    ERROR("teamspeak2 plugin: fdopen failed: %s",
-          sstrerror(errno, errbuf, sizeof(errbuf)));
+    ERROR("teamspeak2 plugin: fdopen failed: %s", STRERRNO);
     tss2_close_socket();
-    return (-1);
+    return -1;
   }
 
   { /* Check that the server correctly identifies itself. */
@@ -263,14 +256,14 @@ static int tss2_get_socket(FILE **ret_read_fh, FILE **ret_write_fh) {
               config_host ? config_host : DEFAULT_HOST,
               config_port ? config_port : DEFAULT_PORT);
     }
-    buffer[sizeof(buffer) - 1] = 0;
+    buffer[sizeof(buffer) - 1] = '\0';
 
     if (memcmp("[TS]\r\n", buffer, 6) != 0) {
       ERROR("teamspeak2 plugin: Unexpected response when connecting "
             "to server. Expected ``[TS]'', got ``%s''.",
             buffer);
       tss2_close_socket();
-      return (-1);
+      return -1;
     }
     DEBUG("teamspeak2 plugin: Server send correct banner, connected!");
   }
@@ -280,7 +273,7 @@ static int tss2_get_socket(FILE **ret_read_fh, FILE **ret_write_fh) {
     *ret_read_fh = global_read_fh;
   if (ret_write_fh != NULL)
     *ret_write_fh = global_write_fh;
-  return (0);
+  return 0;
 } /* int tss2_get_socket */
 
 static int tss2_send_request(FILE *fh, const char *request) {
@@ -293,11 +286,11 @@ static int tss2_send_request(FILE *fh, const char *request) {
   if (status < 0) {
     ERROR("teamspeak2 plugin: fputs failed.");
     tss2_close_socket();
-    return (-1);
+    return -1;
   }
   fflush(fh);
 
-  return (0);
+  return 0;
 } /* int tss2_send_request */
 
 static int tss2_receive_line(FILE *fh, char *buffer, int buffer_size) {
@@ -312,15 +305,13 @@ static int tss2_receive_line(FILE *fh, char *buffer, int buffer_size) {
    */
   temp = fgets(buffer, buffer_size, fh);
   if (temp == NULL) {
-    char errbuf[1024];
-    ERROR("teamspeak2 plugin: fgets failed: %s",
-          sstrerror(errno, errbuf, sizeof(errbuf)));
+    ERROR("teamspeak2 plugin: fgets failed: %s", STRERRNO);
     tss2_close_socket();
-    return (-1);
+    return -1;
   }
 
-  buffer[buffer_size - 1] = 0;
-  return (0);
+  buffer[buffer_size - 1] = '\0';
+  return 0;
 } /* int tss2_receive_line */
 
 static int tss2_select_vserver(FILE *read_fh, FILE *write_fh,
@@ -333,31 +324,31 @@ static int tss2_select_vserver(FILE *read_fh, FILE *write_fh,
   int status;
 
   /* Send request */
-  ssnprintf(command, sizeof(command), "sel %i\r\n", vserver->port);
+  snprintf(command, sizeof(command), "sel %i\r\n", vserver->port);
 
   status = tss2_send_request(write_fh, command);
   if (status != 0) {
     ERROR("teamspeak2 plugin: tss2_send_request (%s) failed.", command);
-    return (-1);
+    return -1;
   }
 
   /* Get answer */
   status = tss2_receive_line(read_fh, response, sizeof(response));
   if (status != 0) {
     ERROR("teamspeak2 plugin: tss2_receive_line failed.");
-    return (-1);
+    return -1;
   }
-  response[sizeof(response) - 1] = 0;
+  response[sizeof(response) - 1] = '\0';
 
   /* Check answer */
   if ((strncasecmp("OK", response, 2) == 0) &&
       ((response[2] == 0) || (response[2] == '\n') || (response[2] == '\r')))
-    return (0);
+    return 0;
 
   ERROR("teamspeak2 plugin: Command ``%s'' failed. "
         "Response received from server was: ``%s''.",
         command, response);
-  return (-1);
+  return -1;
 } /* int tss2_select_vserver */
 
 static int tss2_vserver_gapl(FILE *read_fh, FILE *write_fh,
@@ -373,7 +364,7 @@ static int tss2_vserver_gapl(FILE *read_fh, FILE *write_fh,
   status = tss2_send_request(write_fh, "gapl\r\n");
   if (status != 0) {
     ERROR("teamspeak2 plugin: tss2_send_request (gapl) failed.");
-    return (-1);
+    return -1;
   }
 
   while (42) {
@@ -387,9 +378,9 @@ static int tss2_vserver_gapl(FILE *read_fh, FILE *write_fh,
       read_fh = NULL;
       write_fh = NULL;
       ERROR("teamspeak2 plugin: tss2_receive_line failed.");
-      return (-1);
+      return -1;
     }
-    buffer[sizeof(buffer) - 1] = 0;
+    buffer[sizeof(buffer) - 1] = '\0';
 
     if (strncmp("average_packet_loss=", buffer,
                 strlen("average_packet_loss=")) == 0) {
@@ -418,7 +409,7 @@ static int tss2_vserver_gapl(FILE *read_fh, FILE *write_fh,
       break;
     } else if (strncasecmp("ERROR", buffer, 5) == 0) {
       ERROR("teamspeak2 plugin: Server returned an error: %s", buffer);
-      return (-1);
+      return -1;
     } else {
       WARNING("teamspeak2 plugin: Server returned unexpected string: %s",
               buffer);
@@ -426,7 +417,7 @@ static int tss2_vserver_gapl(FILE *read_fh, FILE *write_fh,
   }
 
   *ret_value = packet_loss;
-  return (0);
+  return 0;
 } /* int tss2_vserver_gapl */
 
 static int tss2_read_vserver(vserver_list_t *vserver) {
@@ -455,7 +446,7 @@ static int tss2_read_vserver(vserver_list_t *vserver) {
   status = tss2_get_socket(&read_fh, &write_fh);
   if (status != 0) {
     ERROR("teamspeak2 plugin: tss2_get_socket failed.");
-    return (-1);
+    return -1;
   }
 
   if (vserver == NULL) {
@@ -463,20 +454,20 @@ static int tss2_read_vserver(vserver_list_t *vserver) {
     status = tss2_send_request(write_fh, "gi\r\n");
   } else {
     /* Request server information */
-    ssnprintf(plugin_instance, sizeof(plugin_instance), "vserver%i",
-              vserver->port);
+    snprintf(plugin_instance, sizeof(plugin_instance), "vserver%i",
+             vserver->port);
 
     /* Select the server */
     status = tss2_select_vserver(read_fh, write_fh, vserver);
     if (status != 0)
-      return (status);
+      return status;
 
     status = tss2_send_request(write_fh, "si\r\n");
   }
 
   if (status != 0) {
     ERROR("teamspeak2 plugin: tss2_send_request failed.");
-    return (-1);
+    return -1;
   }
 
   /* Loop until break */
@@ -616,8 +607,8 @@ static int tss2_read_vserver(vserver_list_t *vserver) {
     tss2_submit_gauge(plugin_instance, "gauge", "servers", servers);
 
   if (valid == 0)
-    return (-1);
-  return (0);
+    return -1;
+  return 0;
 } /* int tss2_read_vserver */
 
 static int tss2_config(const char *key, const char *value) {
@@ -630,7 +621,7 @@ static int tss2_config(const char *key, const char *value) {
     temp = strdup(value);
     if (temp == NULL) {
       ERROR("teamspeak2 plugin: strdup failed.");
-      return (1);
+      return 1;
     }
     sfree(config_host);
     config_host = temp;
@@ -640,7 +631,7 @@ static int tss2_config(const char *key, const char *value) {
     temp = strdup(value);
     if (temp == NULL) {
       ERROR("teamspeak2 plugin: strdup failed.");
-      return (1);
+      return 1;
     }
     sfree(config_port);
     config_port = temp;
@@ -650,10 +641,10 @@ static int tss2_config(const char *key, const char *value) {
 
     status = tss2_add_vserver(atoi(value));
     if (status != 0)
-      return (1);
+      return 1;
   } else {
     /* Unknown variable found */
-    return (-1);
+    return -1;
   }
 
   return 0;
@@ -690,8 +681,8 @@ static int tss2_read(void) {
   }
 
   if (success == 0)
-    return (-1);
-  return (0);
+    return -1;
+  return 0;
 } /* int tss2_read */
 
 static int tss2_shutdown(void) {
@@ -716,7 +707,7 @@ static int tss2_shutdown(void) {
   sfree(config_host);
   sfree(config_port);
 
-  return (0);
+  return 0;
 } /* int tss2_shutdown */
 
 void module_register(void) {
@@ -728,5 +719,3 @@ void module_register(void) {
   plugin_register_read("teamspeak2", tss2_read);
   plugin_register_shutdown("teamspeak2", tss2_shutdown);
 } /* void module_register */
-
-/* vim: set sw=4 ts=4 : */

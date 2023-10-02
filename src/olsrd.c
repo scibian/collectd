@@ -26,8 +26,8 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 
 #include <netdb.h>
 #include <netinet/in.h>
@@ -41,8 +41,8 @@ static const char *config_keys[] = {"Host", "Port", "CollectLinks",
                                     "CollectRoutes", "CollectTopology"};
 static int config_keys_num = STATIC_ARRAY_SIZE(config_keys);
 
-static char *config_node = NULL;
-static char *config_service = NULL;
+static char *config_node;
+static char *config_service;
 
 #define OLSRD_WANT_NOT 0
 #define OLSRD_WANT_SUMMARY 1
@@ -54,15 +54,15 @@ static int config_want_topology = OLSRD_WANT_SUMMARY;
 static const char *olsrd_get_node(void) /* {{{ */
 {
   if (config_node != NULL)
-    return (config_node);
-  return (OLSRD_DEFAULT_NODE);
+    return config_node;
+  return OLSRD_DEFAULT_NODE;
 } /* }}} const char *olsrd_get_node */
 
 static const char *olsrd_get_service(void) /* {{{ */
 {
   if (config_service != NULL)
-    return (config_service);
-  return (OLSRD_DEFAULT_SERVICE);
+    return config_service;
+  return OLSRD_DEFAULT_SERVICE;
 } /* }}} const char *olsrd_get_service */
 
 static void olsrd_set_node(const char *node) /* {{{ */
@@ -114,7 +114,7 @@ static size_t strchomp(char *buffer) /* {{{ */
     buffer[buffer_len] = 0;
   }
 
-  return (buffer_len);
+  return buffer_len;
 } /* }}} size_t strchomp */
 
 static size_t strtabsplit(char *string, char **fields, size_t size) /* {{{ */
@@ -134,7 +134,7 @@ static size_t strtabsplit(char *string, char **fields, size_t size) /* {{{ */
       break;
   }
 
-  return (i);
+  return i;
 } /* }}} size_t strtabsplit */
 
 static FILE *olsrd_connect(void) /* {{{ */
@@ -154,7 +154,7 @@ static FILE *olsrd_connect(void) /* {{{ */
   if (ai_return != 0) {
     ERROR("olsrd plugin: getaddrinfo (%s, %s) failed: %s", olsrd_get_node(),
           olsrd_get_service(), gai_strerror(ai_return));
-    return (NULL);
+    return NULL;
   }
 
   fh = NULL;
@@ -162,19 +162,16 @@ static FILE *olsrd_connect(void) /* {{{ */
        ai_ptr = ai_ptr->ai_next) {
     int fd;
     int status;
-    char errbuf[1024];
 
     fd = socket(ai_ptr->ai_family, ai_ptr->ai_socktype, ai_ptr->ai_protocol);
     if (fd < 0) {
-      ERROR("olsrd plugin: socket failed: %s",
-            sstrerror(errno, errbuf, sizeof(errbuf)));
+      ERROR("olsrd plugin: socket failed: %s", STRERRNO);
       continue;
     }
 
     status = connect(fd, ai_ptr->ai_addr, ai_ptr->ai_addrlen);
     if (status != 0) {
-      ERROR("olsrd plugin: connect failed: %s",
-            sstrerror(errno, errbuf, sizeof(errbuf)));
+      ERROR("olsrd plugin: connect failed: %s", STRERRNO);
       close(fd);
       continue;
     }
@@ -191,7 +188,7 @@ static FILE *olsrd_connect(void) /* {{{ */
 
   freeaddrinfo(ai_list);
 
-  return (fh);
+  return fh;
 } /* }}} FILE *olsrd_connect */
 
 __attribute__((nonnull(2))) static void
@@ -214,7 +211,7 @@ olsrd_submit(const char *plugin_instance, /* {{{ */
 
 static int olsrd_cb_ignore(int lineno, /* {{{ */
                            size_t fields_num, char **fields) {
-  return (0);
+  return 0;
 } /* }}} int olsrd_cb_ignore */
 
 static int olsrd_cb_links(int lineno, /* {{{ */
@@ -239,7 +236,7 @@ static int olsrd_cb_links(int lineno, /* {{{ */
   char *endptr;
 
   if (config_want_links == OLSRD_WANT_NOT)
-    return (0);
+    return 0;
 
   /* Special handling of the first line. */
   if (lineno <= 0) {
@@ -249,7 +246,7 @@ static int olsrd_cb_links(int lineno, /* {{{ */
     nlq_sum = 0.0;
     nlq_num = 0;
 
-    return (0);
+    return 0;
   }
 
   /* Special handling of the last line. */
@@ -272,11 +269,11 @@ static int olsrd_cb_links(int lineno, /* {{{ */
     olsrd_submit(/* p.-inst = */ "links", /* type = */ "signal_quality",
                  "average-nlq", nlq);
 
-    return (0);
+    return 0;
   }
 
   if (fields_num != 6)
-    return (-1);
+    return -1;
 
   links_num++;
 
@@ -294,8 +291,8 @@ static int olsrd_cb_links(int lineno, /* {{{ */
     if (config_want_links == OLSRD_WANT_DETAIL) {
       char type_instance[DATA_MAX_NAME_LEN];
 
-      ssnprintf(type_instance, sizeof(type_instance), "%s-%s-lq", fields[0],
-                fields[1]);
+      snprintf(type_instance, sizeof(type_instance), "%s-%s-lq", fields[0],
+               fields[1]);
 
       DEBUG("olsrd plugin: links: type_instance = %s;  lq = %g;", type_instance,
             lq);
@@ -318,8 +315,8 @@ static int olsrd_cb_links(int lineno, /* {{{ */
     if (config_want_links == OLSRD_WANT_DETAIL) {
       char type_instance[DATA_MAX_NAME_LEN];
 
-      ssnprintf(type_instance, sizeof(type_instance), "%s-%s-rx", fields[0],
-                fields[1]);
+      snprintf(type_instance, sizeof(type_instance), "%s-%s-rx", fields[0],
+               fields[1]);
 
       DEBUG("olsrd plugin: links: type_instance = %s; nlq = %g;", type_instance,
             lq);
@@ -328,7 +325,7 @@ static int olsrd_cb_links(int lineno, /* {{{ */
     }
   }
 
-  return (0);
+  return 0;
 } /* }}} int olsrd_cb_links */
 
 static int olsrd_cb_routes(int lineno, /* {{{ */
@@ -351,7 +348,7 @@ static int olsrd_cb_routes(int lineno, /* {{{ */
   char *endptr;
 
   if (config_want_routes == OLSRD_WANT_NOT)
-    return (0);
+    return 0;
 
   /* Special handling of the first line */
   if (lineno <= 0) {
@@ -361,7 +358,7 @@ static int olsrd_cb_routes(int lineno, /* {{{ */
     etx_sum = 0.0;
     etx_num = 0;
 
-    return (0);
+    return 0;
   }
 
   /* Special handling after the last line */
@@ -386,11 +383,11 @@ static int olsrd_cb_routes(int lineno, /* {{{ */
     olsrd_submit(/* p.-inst = */ "routes", /* type = */ "route_etx", "average",
                  etx);
 
-    return (0);
+    return 0;
   }
 
   if (fields_num != 5)
-    return (-1);
+    return -1;
 
   routes_num++;
 
@@ -429,7 +426,7 @@ static int olsrd_cb_routes(int lineno, /* {{{ */
     }
   }
 
-  return (0);
+  return 0;
 } /* }}} int olsrd_cb_routes */
 
 static int olsrd_cb_topology(int lineno, /* {{{ */
@@ -450,7 +447,7 @@ static int olsrd_cb_topology(int lineno, /* {{{ */
   char *endptr;
 
   if (config_want_topology == OLSRD_WANT_NOT)
-    return (0);
+    return 0;
 
   /* Special handling of the first line */
   if (lineno <= 0) {
@@ -458,7 +455,7 @@ static int olsrd_cb_topology(int lineno, /* {{{ */
     lq_num = 0;
     links_num = 0;
 
-    return (0);
+    return 0;
   }
 
   /* Special handling after the last line */
@@ -474,11 +471,11 @@ static int olsrd_cb_topology(int lineno, /* {{{ */
     olsrd_submit(/* p.-inst = */ "topology", /* type = */ "signal_quality",
                  /* t.-inst = */ "average", lq);
 
-    return (0);
+    return 0;
   }
 
   if (fields_num != 5)
-    return (-1);
+    return -1;
 
   links_num++;
 
@@ -496,8 +493,8 @@ static int olsrd_cb_topology(int lineno, /* {{{ */
     if (config_want_topology == OLSRD_WANT_DETAIL) {
       char type_instance[DATA_MAX_NAME_LEN] = {0};
 
-      ssnprintf(type_instance, sizeof(type_instance), "%s-%s-lq", fields[0],
-                fields[1]);
+      snprintf(type_instance, sizeof(type_instance), "%s-%s-lq", fields[0],
+               fields[1]);
       DEBUG("olsrd plugin: type_instance = %s; lq = %g;", type_instance, lq);
       olsrd_submit(/* p.-inst = */ "topology", /* type = */ "signal_quality",
                    type_instance, lq);
@@ -515,15 +512,15 @@ static int olsrd_cb_topology(int lineno, /* {{{ */
     } else {
       char type_instance[DATA_MAX_NAME_LEN] = {0};
 
-      ssnprintf(type_instance, sizeof(type_instance), "%s-%s-nlq", fields[0],
-                fields[1]);
+      snprintf(type_instance, sizeof(type_instance), "%s-%s-nlq", fields[0],
+               fields[1]);
       DEBUG("olsrd plugin: type_instance = %s; nlq = %g;", type_instance, nlq);
       olsrd_submit(/* p.-inst = */ "topology", /* type = */ "signal_quality",
                    type_instance, nlq);
     }
   }
 
-  return (0);
+  return 0;
 } /* }}} int olsrd_cb_topology */
 
 static int olsrd_read_table(FILE *fh, /* {{{ */
@@ -552,7 +549,7 @@ static int olsrd_read_table(FILE *fh, /* {{{ */
     lineno++;
   } /* while (fgets) */
 
-  return (0);
+  return 0;
 } /* }}} int olsrd_read_table */
 
 static int olsrd_config(const char *key, const char *value) /* {{{ */
@@ -569,10 +566,10 @@ static int olsrd_config(const char *key, const char *value) /* {{{ */
     olsrd_set_detail(&config_want_topology, value, key);
   else {
     ERROR("olsrd plugin: Unknown configuration option given: %s", key);
-    return (-1);
+    return -1;
   }
 
-  return (0);
+  return 0;
 } /* }}} int olsrd_config */
 
 static int olsrd_read(void) /* {{{ */
@@ -583,7 +580,7 @@ static int olsrd_read(void) /* {{{ */
 
   fh = olsrd_connect();
   if (fh == NULL)
-    return (-1);
+    return -1;
 
   fputs("\r\n", fh);
   fflush(fh);
@@ -615,7 +612,7 @@ static int olsrd_read(void) /* {{{ */
 
   fclose(fh);
 
-  return (0);
+  return 0;
 } /* }}} int olsrd_read */
 
 static int olsrd_shutdown(void) /* {{{ */
@@ -623,7 +620,7 @@ static int olsrd_shutdown(void) /* {{{ */
   sfree(config_node);
   sfree(config_service);
 
-  return (0);
+  return 0;
 } /* }}} int olsrd_shutdown */
 
 void module_register(void) {
@@ -631,5 +628,3 @@ void module_register(void) {
   plugin_register_read("olsrd", olsrd_read);
   plugin_register_shutdown("olsrd", olsrd_shutdown);
 } /* void module_register */
-
-/* vim: set sw=2 sts=2 et fdm=marker : */

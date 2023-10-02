@@ -27,8 +27,8 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 
 #if HAVE_STATGRAB_H
 #include <statgrab.h>
@@ -71,7 +71,7 @@ static int users_read(void) {
   endutxent();
 
   users_submit(users);
-/* #endif HAVE_GETUTXENT */
+  /* #endif HAVE_GETUTXENT */
 
 #elif HAVE_GETUTENT
   unsigned int users = 0;
@@ -89,7 +89,7 @@ static int users_read(void) {
   endutent();
 
   users_submit(users);
-/* #endif HAVE_GETUTENT */
+  /* #endif HAVE_GETUTENT */
 
 #elif HAVE_LIBSTATGRAB
   sg_user_stats *us;
@@ -101,7 +101,7 @@ static int users_read(void) {
   us = sg_get_user_stats();
 #endif
   if (us == NULL)
-    return (-1);
+    return -1;
 
   users_submit((gauge_t)
 #if HAVE_LIBSTATGRAB_0_90
@@ -109,13 +109,13 @@ static int users_read(void) {
 #else
                    us->num_entries);
 #endif
-/* #endif HAVE_LIBSTATGRAB */
+  /* #endif HAVE_LIBSTATGRAB */
 
 #else
 #error "No applicable input method."
 #endif
 
-  return (0);
+  return 0;
 } /* int users_read */
 
 void module_register(void) {

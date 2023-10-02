@@ -30,17 +30,17 @@
 
 #include "collectd.h"
 
-#include "common.h" /* auxiliary functions */
-#include "plugin.h" /* plugin_register_*, plugin_dispatch_values */
+#include "plugin.h"              /* plugin_register_*, plugin_dispatch_values */
+#include "utils/common/common.h" /* auxiliary functions */
 
 static const char g_plugin_name[] = "hugepages";
 
-static _Bool g_flag_rpt_numa = 1;
-static _Bool g_flag_rpt_mm = 1;
+static bool g_flag_rpt_numa = true;
+static bool g_flag_rpt_mm = true;
 
-static _Bool g_values_pages = 1;
-static _Bool g_values_bytes = 0;
-static _Bool g_values_percent = 0;
+static bool g_values_pages = true;
+static bool g_values_bytes;
+static bool g_values_percent;
 
 #define HP_HAVE_NR 0x01
 #define HP_HAVE_SURPLUS 0x02
@@ -76,7 +76,7 @@ static int hp_config(oconfig_item_t *ci) {
             child->key);
   }
 
-  return (0);
+  return 0;
 }
 
 static void submit_hp(const struct entry_info *info) {
@@ -87,11 +87,11 @@ static void submit_hp(const struct entry_info *info) {
 
   sstrncpy(vl.plugin, g_plugin_name, sizeof(vl.plugin));
   if (info->node) {
-    ssnprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "%s-%zuKb",
-              info->node, info->page_size_kb);
+    snprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "%s-%zuKb",
+             info->node, info->page_size_kb);
   } else {
-    ssnprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "%zuKb",
-              info->page_size_kb);
+    snprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "%zuKb",
+             info->page_size_kb);
   }
 
   /* ensure all metrics have the same timestamp */
@@ -102,20 +102,20 @@ static void submit_hp(const struct entry_info *info) {
 
   if (g_values_pages) {
     sstrncpy(vl.type, "vmpage_number", sizeof(vl.type));
-    plugin_dispatch_multivalue(&vl, /* store_percentage = */ 0, DS_TYPE_GAUGE,
-                               "free", free, "used", used, NULL);
+    plugin_dispatch_multivalue(&vl, /* store_percentage = */ false,
+                               DS_TYPE_GAUGE, "free", free, "used", used, NULL);
   }
   if (g_values_bytes) {
     gauge_t page_size = (gauge_t)(1024 * info->page_size_kb);
     sstrncpy(vl.type, "memory", sizeof(vl.type));
-    plugin_dispatch_multivalue(&vl, /* store_percentage = */ 0, DS_TYPE_GAUGE,
-                               "free", free * page_size, "used",
+    plugin_dispatch_multivalue(&vl, /* store_percentage = */ false,
+                               DS_TYPE_GAUGE, "free", free * page_size, "used",
                                used * page_size, NULL);
   }
   if (g_values_percent) {
     sstrncpy(vl.type, "percent", sizeof(vl.type));
-    plugin_dispatch_multivalue(&vl, /* store_percentage = */ 1, DS_TYPE_GAUGE,
-                               "free", free, "used", used, NULL);
+    plugin_dispatch_multivalue(&vl, /* store_percentage = */ true,
+                               DS_TYPE_GAUGE, "free", free, "used", used, NULL);
   }
 }
 
@@ -125,7 +125,7 @@ static int read_hugepage_entry(const char *path, const char *entry,
   struct entry_info *info = e_info;
   double value;
 
-  ssnprintf(path2, sizeof(path2), "%s/%s", path, entry);
+  snprintf(path2, sizeof(path2), "%s/%s", path, entry);
 
   FILE *fh = fopen(path2, "rt");
   if (fh == NULL) {
@@ -185,15 +185,13 @@ static int read_syshugepages(const char *path, const char *node) {
     long page_size = strtol(result->d_name + strlen(hugepages_dir),
                             /* endptr = */ NULL, /* base = */ 10);
     if (errno != 0) {
-      char errbuf[1024];
       ERROR("%s: failed to determine page size from directory name \"%s\": %s",
-            g_plugin_name, result->d_name,
-            sstrerror(errno, errbuf, sizeof(errbuf)));
+            g_plugin_name, result->d_name, STRERRNO);
       continue;
     }
 
     /* /sys/devices/system/node/node?/hugepages/ */
-    ssnprintf(path2, sizeof(path2), "%s/%s", path, result->d_name);
+    snprintf(path2, sizeof(path2), "%s/%s", path, result->d_name);
 
     walk_directory(path2, read_hugepage_entry,
                    &(struct entry_info){
@@ -238,7 +236,7 @@ static int read_nodes(void) {
       continue;
     }
 
-    ssnprintf(path, sizeof(path), sys_node_hugepages, result->d_name);
+    snprintf(path, sizeof(path), sys_node_hugepages, result->d_name);
     read_syshugepages(path, result->d_name);
     errno = 0;
   }
