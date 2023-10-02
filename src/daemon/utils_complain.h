@@ -39,7 +39,7 @@ typedef struct {
    * 0 indicates that the complaint is no longer valid. */
   cdtime_t interval;
 
-  _Bool complained_once;
+  bool complained_once;
 } c_complain_t;
 
 #define C_COMPLAIN_INIT_STATIC                                                 \
@@ -48,7 +48,7 @@ typedef struct {
   do {                                                                         \
     (c)->last = 0;                                                             \
     (c)->interval = 0;                                                         \
-    (c)->complained_once = 0;                                                  \
+    (c)->complained_once = false;                                              \
   } while (0)
 
 /*
@@ -113,5 +113,3 @@ c_do_release(int level, c_complain_t *c, const char *format, ...);
   } while (0)
 
 #endif /* UTILS_COMPLAIN_H */
-
-/* vim: set sw=4 ts=4 tw=78 noexpandtab : */

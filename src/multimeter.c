@@ -24,11 +24,10 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 
-#if HAVE_TERMIOS_H && HAVE_SYS_IOCTL_H && HAVE_MATH_H
-#include <math.h>
+#if HAVE_TERMIOS_H && HAVE_SYS_IOCTL_H
 #include <sys/ioctl.h>
 #include <termios.h>
 #else
@@ -47,10 +46,8 @@ static int multimeter_read_value(double *value) {
     tcflush(fd, TCIFLUSH);
 
     if (gettimeofday(&time_end, NULL) < 0) {
-      char errbuf[1024];
-      ERROR("multimeter plugin: gettimeofday failed: %s",
-            sstrerror(errno, errbuf, sizeof(errbuf)));
-      return (-1);
+      ERROR("multimeter plugin: gettimeofday failed: %s", STRERRNO);
+      return -1;
     }
     time_end.tv_sec++;
 
@@ -63,20 +60,19 @@ static int multimeter_read_value(double *value) {
       struct timeval time_now;
 
       status = swrite(fd, "D", 1);
-      if (status < 0) {
+      if (status != 0) {
         ERROR("multimeter plugin: swrite failed.");
-        return (-1);
+        return -1;
       }
 
       FD_ZERO(&rfds);
       FD_SET(fd, &rfds);
 
       if (gettimeofday(&time_now, NULL) < 0) {
-        char errbuf[1024];
         ERROR("multimeter plugin: "
               "gettimeofday failed: %s",
-              sstrerror(errno, errbuf, sizeof(errbuf)));
-        return (-1);
+              STRERRNO);
+        return -1;
       }
       if (timeval_cmp(time_end, time_now, &timeout) < 0)
         break;
@@ -121,9 +117,9 @@ static int multimeter_read_value(double *value) {
               break;
             }
           } else
-            return (-1); /* Overflow */
+            return -1; /* Overflow */
 
-          return (0); /* value received */
+          return 0; /* value received */
         } else
           break;
       } else if (!status) /* Timeout */
@@ -133,16 +129,15 @@ static int multimeter_read_value(double *value) {
         continue;
       } else /* status == -1 */
       {
-        char errbuf[1024];
         ERROR("multimeter plugin: "
               "select failed: %s",
-              sstrerror(errno, errbuf, sizeof(errbuf)));
+              STRERRNO);
         break;
       }
     }
   } while (--retry);
 
-  return (-2); /* no value received */
+  return -2; /* no value received */
 } /* int multimeter_read_value */
 
 static int multimeter_init(void) {
@@ -174,13 +169,13 @@ static int multimeter_init(void) {
         INFO("multimeter plugin: Device "
              "found at %s",
              device);
-        return (0);
+        return 0;
       }
     }
   }
 
   ERROR("multimeter plugin: No device found");
-  return (-1);
+  return -1;
 }
 #undef LINE_LENGTH
 
@@ -199,13 +194,13 @@ static int multimeter_read(void) {
   double value;
 
   if (fd < 0)
-    return (-1);
+    return -1;
 
   if (multimeter_read_value(&value) != 0)
-    return (-1);
+    return -1;
 
   multimeter_submit(value);
-  return (0);
+  return 0;
 } /* int multimeter_read */
 
 static int multimeter_shutdown(void) {
@@ -214,7 +209,7 @@ static int multimeter_shutdown(void) {
     fd = -1;
   }
 
-  return (0);
+  return 0;
 }
 
 void module_register(void) {

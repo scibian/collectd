@@ -28,14 +28,14 @@
 
 #include "collectd.h"
 
+#include "plugin.h"
+#include "utils/common/common.h"
+#include "utils_cache.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <netdb.h>
 #include <stddef.h>
-#include "common.h"
-#include "plugin.h"
-#include "utils_cache.h"
 
 #include <stdlib.h>
 #define SENSU_HOST "localhost"
@@ -107,10 +107,10 @@ struct sensu_host {
 #define F_READY 0x01
   uint8_t flags;
   pthread_mutex_t lock;
-  _Bool notifications;
-  _Bool metrics;
-  _Bool store_rates;
-  _Bool always_append_ds;
+  bool notifications;
+  bool metrics;
+  bool store_rates;
+  bool always_append_ds;
   char *separator;
   char *node;
   char *service;
@@ -119,8 +119,8 @@ struct sensu_host {
   int reference_count;
 };
 
-static char *sensu_tags = NULL;
-static char **sensu_attrs = NULL;
+static char *sensu_tags;
+static char **sensu_attrs;
 static size_t sensu_attrs_num;
 
 static int add_str_to_list(struct str_list *strs,
@@ -132,7 +132,7 @@ static int add_str_to_list(struct str_list *strs,
     ERROR("write_sensu plugin: Unable to alloc memory");
     return -1;
   }
-  strs->strs = realloc(strs->strs, sizeof(char *) * (strs->nb_strs + 1));
+  strs->strs = realloc(strs->strs, strs->nb_strs + 1);
   if (strs->strs == NULL) {
     strs->strs = old_strs_ptr;
     free(newstr);
@@ -231,7 +231,7 @@ static char *build_json_str_list(const char *tag,
   char *ret_str = NULL;
   char *temp_str;
   if (list->nb_strs == 0) {
-    ret_str = malloc(sizeof(char));
+    ret_str = malloc(1);
     if (ret_str == NULL) {
       ERROR("write_sensu plugin: Unable to alloc memory");
       return NULL;
@@ -278,7 +278,7 @@ static int sensu_format_name2(char *ret, int ret_len, const char *hostname,
   do {                                                                         \
     size_t l = strlen(str);                                                    \
     if (l >= buffer_size)                                                      \
-      return (ENOBUFS);                                                        \
+      return ENOBUFS;                                                          \
     memcpy(buffer, (str), l);                                                  \
     buffer += l;                                                               \
     buffer_size -= l;                                                          \
@@ -304,13 +304,13 @@ static int sensu_format_name2(char *ret, int ret_len, const char *hostname,
   buffer[0] = 0;
 
 #undef APPEND
-  return (0);
+  return 0;
 } /* int sensu_format_name2 */
 
 static void in_place_replace_sensu_name_reserved(char *orig_name) /* {{{ */
 {
-  int len = strlen(orig_name);
-  for (int i = 0; i < len; i++) {
+  size_t len = strlen(orig_name);
+  for (size_t i = 0; i < len; i++) {
     // some plugins like ipmi generate special characters in metric name
     switch (orig_name[i]) {
     case '(':
@@ -337,8 +337,7 @@ static void in_place_replace_sensu_name_reserved(char *orig_name) /* {{{ */
 
 static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
                                  data_set_t const *ds, value_list_t const *vl,
-                                 size_t index, gauge_t const *rates,
-                                 int status) {
+                                 size_t index, gauge_t const *rates) {
   char name_buffer[5 * DATA_MAX_NAME_LEN];
   char service_buffer[6 * DATA_MAX_NAME_LEN];
   char *ret_str;
@@ -420,8 +419,8 @@ static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
   // incorporate the data source type
   if ((ds->ds[index].type != DS_TYPE_GAUGE) && (rates != NULL)) {
     char ds_type[DATA_MAX_NAME_LEN];
-    ssnprintf(ds_type, sizeof(ds_type), "%s:rate",
-              DS_TYPE_TO_STRING(ds->ds[index].type));
+    snprintf(ds_type, sizeof(ds_type), "%s:rate",
+             DS_TYPE_TO_STRING(ds->ds[index].type));
     res = my_asprintf(&temp_str, "%s, \"collectd_data_source_type\": \"%s\"",
                       ret_str, ds_type);
     free(ret_str);
@@ -454,7 +453,7 @@ static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
   // incorporate the data source index
   {
     char ds_index[DATA_MAX_NAME_LEN];
-    ssnprintf(ds_index, sizeof(ds_index), "%zu", index);
+    snprintf(ds_index, sizeof(ds_index), "%" PRIsz, index);
     res = my_asprintf(&temp_str, "%s, \"collectd_data_source_index\": %s",
                       ret_str, ds_index);
     free(ret_str);
@@ -519,7 +518,8 @@ static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
         return NULL;
       }
     } else {
-      res = my_asprintf(&value_str, "%llu", vl->values[index].counter);
+      res = my_asprintf(&value_str, "%" PRIu64,
+                        (uint64_t)vl->values[index].counter);
       if (res == -1) {
         free(ret_str);
         ERROR("write_sensu plugin: Unable to alloc memory");
@@ -534,17 +534,17 @@ static char *sensu_value_to_json(struct sensu_host const *host, /* {{{ */
                      host->separator);
   if (host->always_append_ds || (ds->ds_num > 1)) {
     if (host->event_service_prefix == NULL)
-      ssnprintf(service_buffer, sizeof(service_buffer), "%s.%s", name_buffer,
-                ds->ds[index].name);
+      snprintf(service_buffer, sizeof(service_buffer), "%s.%s", name_buffer,
+               ds->ds[index].name);
     else
-      ssnprintf(service_buffer, sizeof(service_buffer), "%s%s.%s",
-                host->event_service_prefix, name_buffer, ds->ds[index].name);
+      snprintf(service_buffer, sizeof(service_buffer), "%s%s.%s",
+               host->event_service_prefix, name_buffer, ds->ds[index].name);
   } else {
     if (host->event_service_prefix == NULL)
       sstrncpy(service_buffer, name_buffer, sizeof(service_buffer));
     else
-      ssnprintf(service_buffer, sizeof(service_buffer), "%s%s",
-                host->event_service_prefix, name_buffer);
+      snprintf(service_buffer, sizeof(service_buffer), "%s%s",
+               host->event_service_prefix, name_buffer);
   }
 
   // Replace collectd sensor name reserved characters so that time series DB is
@@ -626,7 +626,7 @@ static char *replace_str(const char *str, const char *old, /* {{{ */
     r += newlen;
     p = q + oldlen;
   }
-  strncpy(r, p, strlen(p));
+  sstrncpy(r, p, retlen + 1);
 
   return ret;
 } /* }}} char *replace_str */
@@ -879,11 +879,9 @@ static int sensu_send_msg(struct sensu_host *host, const char *msg) /* {{{ */
   sensu_close_socket(host);
 
   if (status != 0) {
-    char errbuf[1024];
     ERROR("write_sensu plugin: Sending to Sensu at %s:%s failed: %s",
           (host->node != NULL) ? host->node : SENSU_HOST,
-          (host->service != NULL) ? host->service : SENSU_PORT,
-          sstrerror(errno, errbuf, sizeof(errbuf)));
+          (host->service != NULL) ? host->service : SENSU_PORT, STRERRNO);
     return -1;
   }
 
@@ -927,7 +925,7 @@ static int sensu_write(const data_set_t *ds, /* {{{ */
     }
   }
   for (size_t i = 0; i < vl->values_len; i++) {
-    msg = sensu_value_to_json(host, ds, vl, (int)i, rates, statuses[i]);
+    msg = sensu_value_to_json(host, ds, vl, (int)i, rates);
     if (msg == NULL) {
       sfree(rates);
       pthread_mutex_unlock(&host->lock);
@@ -998,7 +996,10 @@ static void sensu_free(void *p) /* {{{ */
   sfree(host->separator);
   free_str_list(&(host->metric_handlers));
   free_str_list(&(host->notification_handlers));
+
+  pthread_mutex_unlock(&host->lock);
   pthread_mutex_destroy(&host->lock);
+
   sfree(host);
 } /* }}} void sensu_free */
 
@@ -1017,10 +1018,10 @@ static int sensu_config_node(oconfig_item_t *ci) /* {{{ */
   host->reference_count = 1;
   host->node = NULL;
   host->service = NULL;
-  host->notifications = 0;
-  host->metrics = 0;
-  host->store_rates = 1;
-  host->always_append_ds = 0;
+  host->notifications = false;
+  host->metrics = false;
+  host->store_rates = true;
+  host->always_append_ds = false;
   host->metric_handlers.nb_strs = 0;
   host->metric_handlers.strs = NULL;
   host->notification_handlers.nb_strs = 0;
@@ -1083,12 +1084,8 @@ static int sensu_config_node(oconfig_item_t *ci) /* {{{ */
         break;
     } else if (strcasecmp("Port", child->key) == 0) {
       status = cf_util_get_service(child, &host->service);
-      if (status != 0) {
-        ERROR("write_sensu plugin: Invalid argument "
-              "configured for the \"Port\" "
-              "option.");
+      if (status != 0)
         break;
-      }
     } else if (strcasecmp("StoreRates", child->key) == 0) {
       status = cf_util_get_boolean(child, &host->store_rates);
       if (status != 0)
@@ -1122,16 +1119,17 @@ static int sensu_config_node(oconfig_item_t *ci) /* {{{ */
     return -1;
   }
 
-  if ((host->notification_handlers.nb_strs > 0) && (host->notifications == 0)) {
+  if ((host->notification_handlers.nb_strs > 0) &&
+      (host->notifications == false)) {
     WARNING("write_sensu plugin: NotificationHandler given so forcing "
             "notifications to be enabled");
     host->notifications = 1;
   }
 
-  if ((host->metric_handlers.nb_strs > 0) && (host->metrics == 0)) {
+  if ((host->metric_handlers.nb_strs > 0) && (host->metrics == false)) {
     WARNING("write_sensu plugin: MetricHandler given so forcing metrics to be "
             "enabled");
-    host->metrics = 1;
+    host->metrics = true;
   }
 
   if (!(host->notifications || host->metrics)) {
@@ -1141,7 +1139,7 @@ static int sensu_config_node(oconfig_item_t *ci) /* {{{ */
     return -1;
   }
 
-  ssnprintf(callback_name, sizeof(callback_name), "write_sensu/%s", host->name);
+  snprintf(callback_name, sizeof(callback_name), "write_sensu/%s", host->name);
 
   user_data_t ud = {.data = host, .free_func = sensu_free};
 
@@ -1223,10 +1221,10 @@ static int sensu_config(oconfig_item_t *ci) /* {{{ */
         continue;
 
       status = add_str_to_list(&sensu_tags_arr, tmp);
+      DEBUG("write_sensu plugin: Got tag: %s", tmp);
       sfree(tmp);
       if (status != 0)
         continue;
-      DEBUG("write_sensu plugin: Got tag: %s", tmp);
     } else {
       WARNING("write_sensu plugin: Ignoring unknown "
               "configuration option \"%s\" at top level.",
@@ -1248,5 +1246,3 @@ static int sensu_config(oconfig_item_t *ci) /* {{{ */
 void module_register(void) {
   plugin_register_complex_config("write_sensu", sensu_config);
 }
-
-/* vim: set sw=8 sts=8 ts=8 noet : */

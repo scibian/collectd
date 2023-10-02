@@ -26,12 +26,12 @@
 
 #include "collectd.h"
 
-#include "common.h"
-#include "meta_data.h"
 #include "plugin.h"
+#include "utils/common/common.h"
+#include "utils/lookup/vl_lookup.h"
+#include "utils/metadata/meta_data.h"
 #include "utils_cache.h" /* for uc_get_rate() */
 #include "utils_subst.h"
-#include "utils_vl_lookup.h"
 
 #define AGG_MATCHES_ALL(str) (strcmp("/.*/", str) == 0)
 #define AGG_FUNC_PLACEHOLDER "%{aggregation}"
@@ -48,12 +48,12 @@ struct aggregation_s /* {{{ */
   char *set_plugin_instance;
   char *set_type_instance;
 
-  _Bool calc_num;
-  _Bool calc_sum;
-  _Bool calc_average;
-  _Bool calc_min;
-  _Bool calc_max;
-  _Bool calc_stddev;
+  bool calc_num;
+  bool calc_sum;
+  bool calc_average;
+  bool calc_min;
+  bool calc_max;
+  bool calc_stddev;
 }; /* }}} */
 typedef struct aggregation_s aggregation_t;
 
@@ -83,27 +83,25 @@ struct agg_instance_s /* {{{ */
   agg_instance_t *next;
 }; /* }}} */
 
-static lookup_t *lookup = NULL;
+static lookup_t *lookup;
 
 static pthread_mutex_t agg_instance_list_lock = PTHREAD_MUTEX_INITIALIZER;
-static agg_instance_t *agg_instance_list_head = NULL;
+static agg_instance_t *agg_instance_list_head;
 
-static _Bool agg_is_regex(char const *str) /* {{{ */
+static bool agg_is_regex(char const *str) /* {{{ */
 {
-  size_t len;
-
   if (str == NULL)
-    return (0);
+    return false;
 
-  len = strlen(str);
+  size_t len = strlen(str);
   if (len < 3)
-    return (0);
+    return false;
 
   if ((str[0] == '/') && (str[len - 1] == '/'))
-    return (1);
+    return true;
   else
-    return (0);
-} /* }}} _Bool agg_is_regex */
+    return false;
+} /* }}} bool agg_is_regex */
 
 static void agg_destroy(aggregation_t *agg) /* {{{ */
 {
@@ -222,21 +220,19 @@ static int agg_instance_create_name(agg_instance_t *inst, /* {{{ */
 
 #undef COPY_FIELD
 
-  return (0);
+  return 0;
 } /* }}} int agg_instance_create_name */
 
 /* Create a new aggregation instance. */
 static agg_instance_t *agg_instance_create(data_set_t const *ds, /* {{{ */
                                            value_list_t const *vl,
                                            aggregation_t *agg) {
-  agg_instance_t *inst;
-
   DEBUG("aggregation plugin: Creating new instance.");
 
-  inst = calloc(1, sizeof(*inst));
+  agg_instance_t *inst = calloc(1, sizeof(*inst));
   if (inst == NULL) {
     ERROR("aggregation plugin: calloc() failed.");
-    return (NULL);
+    return NULL;
   }
   pthread_mutex_init(&inst->lock, /* attr = */ NULL);
 
@@ -256,7 +252,7 @@ static agg_instance_t *agg_instance_create(data_set_t const *ds, /* {{{ */
         agg_instance_destroy(inst);                                            \
         free(inst);                                                            \
         ERROR("aggregation plugin: calloc() failed.");                         \
-        return (NULL);                                                         \
+        return NULL;                                                           \
       }                                                                        \
     }                                                                          \
   } while (0)
@@ -275,7 +271,7 @@ static agg_instance_t *agg_instance_create(data_set_t const *ds, /* {{{ */
   agg_instance_list_head = inst;
   pthread_mutex_unlock(&agg_instance_list_lock);
 
-  return (inst);
+  return inst;
 } /* }}} agg_instance_t *agg_instance_create */
 
 /* Update the num, sum, min, max, ... fields of the aggregation instance, if
@@ -284,28 +280,26 @@ static agg_instance_t *agg_instance_create(data_set_t const *ds, /* {{{ */
  * and non-zero otherwise. */
 static int agg_instance_update(agg_instance_t *inst, /* {{{ */
                                data_set_t const *ds, value_list_t const *vl) {
-  gauge_t *rate;
-
   if (ds->ds_num != 1) {
     ERROR("aggregation plugin: The \"%s\" type (data set) has more than one "
           "data source. This is currently not supported by this plugin. "
           "Sorry.",
           ds->type);
-    return (EINVAL);
+    return EINVAL;
   }
 
-  rate = uc_get_rate(ds, vl);
+  gauge_t *rate = uc_get_rate(ds, vl);
   if (rate == NULL) {
     char ident[6 * DATA_MAX_NAME_LEN];
     FORMAT_VL(ident, sizeof(ident), vl);
     ERROR("aggregation plugin: Unable to read the current rate of \"%s\".",
           ident);
-    return (ENOENT);
+    return ENOENT;
   }
 
   if (isnan(rate[0])) {
     sfree(rate);
-    return (0);
+    return 0;
   }
 
   pthread_mutex_lock(&inst->lock);
@@ -322,7 +316,7 @@ static int agg_instance_update(agg_instance_t *inst, /* {{{ */
   pthread_mutex_unlock(&inst->lock);
 
   sfree(rate);
-  return (0);
+  return 0;
 } /* }}} int agg_instance_update */
 
 static int agg_instance_read_func(agg_instance_t *inst, /* {{{ */
@@ -330,25 +324,24 @@ static int agg_instance_read_func(agg_instance_t *inst, /* {{{ */
                                   rate_to_value_state_t *state,
                                   value_list_t *vl, char const *pi_prefix,
                                   cdtime_t t) {
-  value_t v;
-  int status;
-
   if (pi_prefix[0] != 0)
     subst_string(vl->plugin_instance, sizeof(vl->plugin_instance), pi_prefix,
                  AGG_FUNC_PLACEHOLDER, func);
   else
     sstrncpy(vl->plugin_instance, func, sizeof(vl->plugin_instance));
 
-  status = rate_to_value(&v, rate, state, inst->ds_type, t);
+  value_t v;
+
+  int status = rate_to_value(&v, rate, state, inst->ds_type, t);
   if (status != 0) {
     /* If this is the first iteration and rate_to_value() was asked to return a
      * COUNTER or a DERIVE, it will return EAGAIN. Catch this and handle
      * gracefully. */
     if (status == EAGAIN)
-      return (0);
+      return 0;
 
     WARNING("aggregation plugin: rate_to_value failed with status %i.", status);
-    return (-1);
+    return -1;
   }
 
   vl->values = &v;
@@ -359,7 +352,7 @@ static int agg_instance_read_func(agg_instance_t *inst, /* {{{ */
   vl->values = NULL;
   vl->values_len = 0;
 
-  return (0);
+  return 0;
 } /* }}} int agg_instance_read_func */
 
 static int agg_instance_read(agg_instance_t *inst, cdtime_t t) /* {{{ */
@@ -376,7 +369,7 @@ static int agg_instance_read(agg_instance_t *inst, cdtime_t t) /* {{{ */
   vl.meta = meta_data_create();
   if (vl.meta == NULL) {
     ERROR("aggregation plugin: meta_data_create failed.");
-    return (-1);
+    return -1;
   }
   meta_data_add_boolean(vl.meta, "aggregation:created", 1);
 
@@ -422,7 +415,7 @@ static int agg_instance_read(agg_instance_t *inst, cdtime_t t) /* {{{ */
   meta_data_destroy(vl.meta);
   vl.meta = NULL;
 
-  return (0);
+  return 0;
 } /* }}} int agg_instance_read */
 
 /* lookup_class_callback_t for utils_vl_lookup */
@@ -430,7 +423,7 @@ static void *agg_lookup_class_callback(/* {{{ */
                                        data_set_t const *ds,
                                        value_list_t const *vl,
                                        void *user_class) {
-  return (agg_instance_create(ds, vl, (aggregation_t *)user_class));
+  return agg_instance_create(ds, vl, (aggregation_t *)user_class);
 } /* }}} void *agg_class_callback */
 
 /* lookup_obj_callback_t for utils_vl_lookup */
@@ -438,7 +431,7 @@ static int agg_lookup_obj_callback(data_set_t const *ds, /* {{{ */
                                    value_list_t const *vl,
                                    __attribute__((unused)) void *user_class,
                                    void *user_obj) {
-  return (agg_instance_update((agg_instance_t *)user_obj, ds, vl));
+  return agg_instance_update((agg_instance_t *)user_obj, ds, vl);
 } /* }}} int agg_lookup_obj_callback */
 
 /* lookup_free_class_callback_t for utils_vl_lookup */
@@ -474,8 +467,6 @@ static void agg_lookup_free_obj_callback(void *user_obj) /* {{{ */
 static int agg_config_handle_group_by(oconfig_item_t const *ci, /* {{{ */
                                       aggregation_t *agg) {
   for (int i = 0; i < ci->values_num; i++) {
-    char const *value;
-
     if (ci->values[i].type != OCONFIG_TYPE_STRING) {
       ERROR("aggregation plugin: Argument %i of the \"GroupBy\" option "
             "is not a string.",
@@ -483,7 +474,7 @@ static int agg_config_handle_group_by(oconfig_item_t const *ci, /* {{{ */
       continue;
     }
 
-    value = ci->values[i].value.string;
+    const char *value = ci->values[i].value.string;
 
     if (strcasecmp("Host", value) == 0)
       agg->group_by |= LU_GROUP_BY_HOST;
@@ -501,19 +492,15 @@ static int agg_config_handle_group_by(oconfig_item_t const *ci, /* {{{ */
               value);
   } /* for (ci->values) */
 
-  return (0);
+  return 0;
 } /* }}} int agg_config_handle_group_by */
 
 static int agg_config_aggregation(oconfig_item_t *ci) /* {{{ */
 {
-  aggregation_t *agg;
-  _Bool is_valid;
-  int status;
-
-  agg = calloc(1, sizeof(*agg));
+  aggregation_t *agg = calloc(1, sizeof(*agg));
   if (agg == NULL) {
     ERROR("aggregation plugin: calloc failed.");
-    return (-1);
+    return -1;
   }
 
   sstrncpy(agg->ident.host, "/.*/", sizeof(agg->ident.host));
@@ -525,49 +512,55 @@ static int agg_config_aggregation(oconfig_item_t *ci) /* {{{ */
 
   for (int i = 0; i < ci->children_num; i++) {
     oconfig_item_t *child = ci->children + i;
+    int status = 0;
 
     if (strcasecmp("Host", child->key) == 0)
-      cf_util_get_string_buffer(child, agg->ident.host,
-                                sizeof(agg->ident.host));
+      status = cf_util_get_string_buffer(child, agg->ident.host,
+                                         sizeof(agg->ident.host));
     else if (strcasecmp("Plugin", child->key) == 0)
-      cf_util_get_string_buffer(child, agg->ident.plugin,
-                                sizeof(agg->ident.plugin));
+      status = cf_util_get_string_buffer(child, agg->ident.plugin,
+                                         sizeof(agg->ident.plugin));
     else if (strcasecmp("PluginInstance", child->key) == 0)
-      cf_util_get_string_buffer(child, agg->ident.plugin_instance,
-                                sizeof(agg->ident.plugin_instance));
+      status = cf_util_get_string_buffer(child, agg->ident.plugin_instance,
+                                         sizeof(agg->ident.plugin_instance));
     else if (strcasecmp("Type", child->key) == 0)
-      cf_util_get_string_buffer(child, agg->ident.type,
-                                sizeof(agg->ident.type));
+      status = cf_util_get_string_buffer(child, agg->ident.type,
+                                         sizeof(agg->ident.type));
     else if (strcasecmp("TypeInstance", child->key) == 0)
-      cf_util_get_string_buffer(child, agg->ident.type_instance,
-                                sizeof(agg->ident.type_instance));
+      status = cf_util_get_string_buffer(child, agg->ident.type_instance,
+                                         sizeof(agg->ident.type_instance));
     else if (strcasecmp("SetHost", child->key) == 0)
-      cf_util_get_string(child, &agg->set_host);
+      status = cf_util_get_string(child, &agg->set_host);
     else if (strcasecmp("SetPlugin", child->key) == 0)
-      cf_util_get_string(child, &agg->set_plugin);
+      status = cf_util_get_string(child, &agg->set_plugin);
     else if (strcasecmp("SetPluginInstance", child->key) == 0)
-      cf_util_get_string(child, &agg->set_plugin_instance);
+      status = cf_util_get_string(child, &agg->set_plugin_instance);
     else if (strcasecmp("SetTypeInstance", child->key) == 0)
-      cf_util_get_string(child, &agg->set_type_instance);
+      status = cf_util_get_string(child, &agg->set_type_instance);
     else if (strcasecmp("GroupBy", child->key) == 0)
-      agg_config_handle_group_by(child, agg);
+      status = agg_config_handle_group_by(child, agg);
     else if (strcasecmp("CalculateNum", child->key) == 0)
-      cf_util_get_boolean(child, &agg->calc_num);
+      status = cf_util_get_boolean(child, &agg->calc_num);
     else if (strcasecmp("CalculateSum", child->key) == 0)
-      cf_util_get_boolean(child, &agg->calc_sum);
+      status = cf_util_get_boolean(child, &agg->calc_sum);
     else if (strcasecmp("CalculateAverage", child->key) == 0)
-      cf_util_get_boolean(child, &agg->calc_average);
+      status = cf_util_get_boolean(child, &agg->calc_average);
     else if (strcasecmp("CalculateMinimum", child->key) == 0)
-      cf_util_get_boolean(child, &agg->calc_min);
+      status = cf_util_get_boolean(child, &agg->calc_min);
     else if (strcasecmp("CalculateMaximum", child->key) == 0)
-      cf_util_get_boolean(child, &agg->calc_max);
+      status = cf_util_get_boolean(child, &agg->calc_max);
     else if (strcasecmp("CalculateStddev", child->key) == 0)
-      cf_util_get_boolean(child, &agg->calc_stddev);
+      status = cf_util_get_boolean(child, &agg->calc_stddev);
     else
       WARNING("aggregation plugin: The \"%s\" key is not allowed inside "
               "<Aggregation /> blocks and will be ignored.",
               child->key);
-  }
+
+    if (status != 0) {
+      sfree(agg);
+      return status;
+    }
+  } /* for (int i = 0; i < ci->children_num; i++) */
 
   if (agg_is_regex(agg->ident.host))
     agg->regex_fields |= LU_GROUP_BY_HOST;
@@ -579,7 +572,7 @@ static int agg_config_aggregation(oconfig_item_t *ci) /* {{{ */
     agg->regex_fields |= LU_GROUP_BY_TYPE_INSTANCE;
 
   /* Sanity checking */
-  is_valid = 1;
+  bool is_valid = true;
   if (strcmp("/.*/", agg->ident.type) == 0) /* {{{ */
   {
     ERROR("aggregation plugin: It appears you did not specify the required "
@@ -588,13 +581,13 @@ static int agg_config_aggregation(oconfig_item_t *ci) /* {{{ */
           "Type \"%s\", TypeInstance \"%s\")",
           agg->ident.host, agg->ident.plugin, agg->ident.plugin_instance,
           agg->ident.type, agg->ident.type_instance);
-    is_valid = 0;
+    is_valid = false;
   } else if (strchr(agg->ident.type, '/') != NULL) {
     ERROR("aggregation plugin: The \"Type\" may not contain the '/' "
           "character. Especially, it may not be a regex. The current "
           "value is \"%s\".",
           agg->ident.type);
-    is_valid = 0;
+    is_valid = false;
   } /* }}} */
 
   /* Check that there is at least one regex field without a grouping. {{{ */
@@ -607,7 +600,7 @@ static int agg_config_aggregation(oconfig_item_t *ci) /* {{{ */
           "Type \"%s\", TypeInstance \"%s\")",
           agg->ident.host, agg->ident.plugin, agg->ident.plugin_instance,
           agg->ident.type, agg->ident.type_instance);
-    is_valid = 0;
+    is_valid = false;
   } /* }}} */
 
   /* Check that all grouping fields are regular expressions. {{{ */
@@ -619,7 +612,7 @@ static int agg_config_aggregation(oconfig_item_t *ci) /* {{{ */
           "Type \"%s\", TypeInstance \"%s\")",
           agg->ident.host, agg->ident.plugin, agg->ident.plugin_instance,
           agg->ident.type, agg->ident.type_instance);
-    is_valid = 0;
+    is_valid = false;
   } /* }}} */
 
   if (!agg->calc_num && !agg->calc_sum && !agg->calc_average /* {{{ */
@@ -630,20 +623,19 @@ static int agg_config_aggregation(oconfig_item_t *ci) /* {{{ */
           "Type \"%s\", TypeInstance \"%s\")",
           agg->ident.host, agg->ident.plugin, agg->ident.plugin_instance,
           agg->ident.type, agg->ident.type_instance);
-    is_valid = 0;
+    is_valid = false;
   } /* }}} */
 
-  if (!is_valid) /* {{{ */
-  {
+  if (!is_valid) { /* {{{ */
     sfree(agg);
-    return (-1);
+    return -1;
   } /* }}} */
 
-  status = lookup_add(lookup, &agg->ident, agg->group_by, agg);
+  int status = lookup_add(lookup, &agg->ident, agg->group_by, agg);
   if (status != 0) {
     ERROR("aggregation plugin: lookup_add failed with status %i.", status);
     sfree(agg);
-    return (-1);
+    return -1;
   }
 
   DEBUG("aggregation plugin: Successfully added aggregation: "
@@ -651,7 +643,7 @@ static int agg_config_aggregation(oconfig_item_t *ci) /* {{{ */
         "Type \"%s\", TypeInstance \"%s\")",
         agg->ident.host, agg->ident.plugin, agg->ident.plugin_instance,
         agg->ident.type, agg->ident.type_instance);
-  return (0);
+  return 0;
 } /* }}} int agg_config_aggregation */
 
 static int agg_config(oconfig_item_t *ci) /* {{{ */
@@ -665,7 +657,7 @@ static int agg_config(oconfig_item_t *ci) /* {{{ */
     if (lookup == NULL) {
       pthread_mutex_unlock(&agg_instance_list_lock);
       ERROR("aggregation plugin: lookup_create failed.");
-      return (-1);
+      return -1;
     }
   }
 
@@ -682,16 +674,13 @@ static int agg_config(oconfig_item_t *ci) /* {{{ */
 
   pthread_mutex_unlock(&agg_instance_list_lock);
 
-  return (0);
+  return 0;
 } /* }}} int agg_config */
 
 static int agg_read(void) /* {{{ */
 {
-  cdtime_t t;
-  int success;
-
-  t = cdtime();
-  success = 0;
+  cdtime_t t = cdtime();
+  int success = 0;
 
   pthread_mutex_lock(&agg_instance_list_lock);
 
@@ -703,14 +692,12 @@ static int agg_read(void) /* {{{ */
    * Therefore we need to handle this case separately. */
   if (agg_instance_list_head == NULL) {
     pthread_mutex_unlock(&agg_instance_list_lock);
-    return (0);
+    return 0;
   }
 
   for (agg_instance_t *this = agg_instance_list_head; this != NULL;
        this = this->next) {
-    int status;
-
-    status = agg_instance_read(this, t);
+    int status = agg_instance_read(this, t);
     if (status != 0)
       WARNING("aggregation plugin: Reading an aggregation instance "
               "failed with status %i.",
@@ -721,20 +708,20 @@ static int agg_read(void) /* {{{ */
 
   pthread_mutex_unlock(&agg_instance_list_lock);
 
-  return ((success > 0) ? 0 : -1);
+  return (success > 0) ? 0 : -1;
 } /* }}} int agg_read */
 
 static int agg_write(data_set_t const *ds, value_list_t const *vl, /* {{{ */
                      __attribute__((unused)) user_data_t *user_data) {
-  _Bool created_by_aggregation = 0;
-  int status;
-
+  bool created_by_aggregation = false;
   /* Ignore values that were created by the aggregation plugin to avoid weird
    * effects. */
   (void)meta_data_get_boolean(vl->meta, "aggregation:created",
                               &created_by_aggregation);
   if (created_by_aggregation)
-    return (0);
+    return 0;
+
+  int status;
 
   if (lookup == NULL)
     status = ENOENT;
@@ -744,7 +731,7 @@ static int agg_write(data_set_t const *ds, value_list_t const *vl, /* {{{ */
       status = 0;
   }
 
-  return (status);
+  return status;
 } /* }}} int agg_write */
 
 void module_register(void) {
@@ -752,5 +739,3 @@ void module_register(void) {
   plugin_register_read("aggregation", agg_read);
   plugin_register_write("aggregation", agg_write, /* user_data = */ NULL);
 }
-
-/* vim: set sw=2 sts=2 tw=78 et fdm=marker : */

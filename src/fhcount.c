@@ -19,37 +19,37 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 
 static const char *config_keys[] = {"ValuesAbsolute", "ValuesPercentage"};
 static int config_keys_num = STATIC_ARRAY_SIZE(config_keys);
 
-static _Bool values_absolute = 1;
-static _Bool values_percentage = 0;
+static bool values_absolute = true;
+static bool values_percentage;
 
 static int fhcount_config(const char *key, const char *value) {
   int ret = -1;
 
   if (strcasecmp(key, "ValuesAbsolute") == 0) {
     if (IS_TRUE(value)) {
-      values_absolute = 1;
+      values_absolute = true;
     } else {
-      values_absolute = 0;
+      values_absolute = false;
     }
 
     ret = 0;
   } else if (strcasecmp(key, "ValuesPercentage") == 0) {
     if (IS_TRUE(value)) {
-      values_percentage = 1;
+      values_percentage = true;
     } else {
-      values_percentage = 0;
+      values_percentage = false;
     }
 
     ret = 0;
   }
 
-  return (ret);
+  return ret;
 }
 
 static void fhcount_submit(const char *type, const char *type_instance,
@@ -75,19 +75,18 @@ static int fhcount_read(void) {
   int prc_used, prc_unused;
   char *fields[3];
   char buffer[buffer_len];
-  char errbuf[1024];
   FILE *fp;
 
   // Open file
   fp = fopen("/proc/sys/fs/file-nr", "r");
   if (fp == NULL) {
-    ERROR("fhcount: fopen: %s", sstrerror(errno, errbuf, sizeof(errbuf)));
-    return (EXIT_FAILURE);
+    ERROR("fhcount: fopen: %s", STRERRNO);
+    return EXIT_FAILURE;
   }
   if (fgets(buffer, buffer_len, fp) == NULL) {
-    ERROR("fhcount: fgets: %s", sstrerror(errno, errbuf, sizeof(errbuf)));
+    ERROR("fhcount: fgets: %s", STRERRNO);
     fclose(fp);
-    return (EXIT_FAILURE);
+    return EXIT_FAILURE;
   }
   fclose(fp);
 
@@ -96,7 +95,7 @@ static int fhcount_read(void) {
 
   if (numfields != 3) {
     ERROR("fhcount: Line doesn't contain 3 fields");
-    return (EXIT_FAILURE);
+    return EXIT_FAILURE;
   }
 
   // Define the values
@@ -117,7 +116,7 @@ static int fhcount_read(void) {
     fhcount_submit("percent", "unused", (gauge_t)prc_unused);
   }
 
-  return (0);
+  return 0;
 }
 
 void module_register(void) {

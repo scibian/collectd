@@ -31,9 +31,10 @@
 
 #include "plugin.h"
 
-#define STATE_OKAY 0
-#define STATE_WARNING 1
-#define STATE_ERROR 2
+#define STATE_UNKNOWN 0
+#define STATE_OKAY 1
+#define STATE_WARNING 2
+#define STATE_ERROR 3
 #define STATE_MISSING 15
 
 int uc_init(void);
@@ -42,6 +43,9 @@ int uc_update(const data_set_t *ds, const value_list_t *vl);
 int uc_get_rate_by_name(const char *name, gauge_t **ret_values,
                         size_t *ret_values_num);
 gauge_t *uc_get_rate(const data_set_t *ds, const value_list_t *vl);
+int uc_get_value_by_name(const char *name, value_t **ret_values,
+                         size_t *ret_values_num);
+value_t *uc_get_value(const data_set_t *ds, const value_list_t *vl);
 
 size_t uc_get_size(void);
 int uc_get_names(char ***ret_names, cdtime_t **ret_times, size_t *ret_number);
@@ -104,6 +108,8 @@ int uc_iterator_get_values(uc_iter_t *iter, value_t **ret_values,
                            size_t *ret_num);
 /* Return the interval of the value at the current position. */
 int uc_iterator_get_interval(uc_iter_t *iter, cdtime_t *ret_interval);
+/* Return the metadata for the value at the current position. */
+int uc_iterator_get_meta(uc_iter_t *iter, meta_data_t **ret_meta);
 
 /*
  * Meta data interface
@@ -120,7 +126,7 @@ int uc_meta_data_add_unsigned_int(const value_list_t *vl, const char *key,
 int uc_meta_data_add_double(const value_list_t *vl, const char *key,
                             double value);
 int uc_meta_data_add_boolean(const value_list_t *vl, const char *key,
-                             _Bool value);
+                             bool value);
 
 int uc_meta_data_get_string(const value_list_t *vl, const char *key,
                             char **value);
@@ -131,7 +137,6 @@ int uc_meta_data_get_unsigned_int(const value_list_t *vl, const char *key,
 int uc_meta_data_get_double(const value_list_t *vl, const char *key,
                             double *value);
 int uc_meta_data_get_boolean(const value_list_t *vl, const char *key,
-                             _Bool *value);
+                             bool *value);
 
-/* vim: set shiftwidth=2 softtabstop=2 tabstop=8 : */
 #endif /* !UTILS_CACHE_H */

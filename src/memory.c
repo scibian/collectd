@@ -25,8 +25,8 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 
 #ifdef HAVE_SYS_SYSCTL_H
 #include <sys/sysctl.h>
@@ -94,8 +94,8 @@ static int pagesize;
 #error "No applicable input method."
 #endif
 
-static _Bool values_absolute = 1;
-static _Bool values_percentage = 0;
+static bool values_absolute = true;
+static bool values_percentage;
 
 static int memory_config(oconfig_item_t *ci) /* {{{ */
 {
@@ -111,14 +111,14 @@ static int memory_config(oconfig_item_t *ci) /* {{{ */
             child->key);
   }
 
-  return (0);
+  return 0;
 } /* }}} int memory_config */
 
 static int memory_init(void) {
 #if HAVE_HOST_STATISTICS
   port_host = mach_host_self();
   host_page_size(port_host, &pagesize);
-/* #endif HAVE_HOST_STATISTICS */
+  /* #endif HAVE_HOST_STATISTICS */
 
 #elif HAVE_SYSCTLBYNAME
 /* no init stuff */
@@ -133,22 +133,22 @@ static int memory_init(void) {
   pagesize = getpagesize();
   if (get_kstat(&ksp, "unix", 0, "system_pages") != 0) {
     ksp = NULL;
-    return (-1);
+    return -1;
   }
   if (get_kstat(&ksz, "zfs", 0, "arcstats") != 0) {
     ksz = NULL;
-    return (-1);
+    return -1;
   }
 
-/* #endif HAVE_LIBKSTAT */
+    /* #endif HAVE_LIBKSTAT */
 
 #elif HAVE_SYSCTL
   pagesize = getpagesize();
   if (pagesize <= 0) {
     ERROR("memory plugin: Invalid pagesize: %i", pagesize);
-    return (-1);
+    return -1;
   }
-/* #endif HAVE_SYSCTL */
+    /* #endif HAVE_SYSCTL */
 
 #elif HAVE_LIBSTATGRAB
 /* no init stuff */
@@ -157,15 +157,15 @@ static int memory_init(void) {
 #elif HAVE_PERFSTAT
   pagesize = getpagesize();
 #endif /* HAVE_PERFSTAT */
-  return (0);
+  return 0;
 } /* int memory_init */
 
 #define MEMORY_SUBMIT(...)                                                     \
   do {                                                                         \
     if (values_absolute)                                                       \
-      plugin_dispatch_multivalue(vl, 0, DS_TYPE_GAUGE, __VA_ARGS__, NULL);     \
+      plugin_dispatch_multivalue(vl, false, DS_TYPE_GAUGE, __VA_ARGS__, NULL); \
     if (values_percentage)                                                     \
-      plugin_dispatch_multivalue(vl, 1, DS_TYPE_GAUGE, __VA_ARGS__, NULL);     \
+      plugin_dispatch_multivalue(vl, true, DS_TYPE_GAUGE, __VA_ARGS__, NULL);  \
   } while (0)
 
 static int memory_read_internal(value_list_t *vl) {
@@ -180,14 +180,14 @@ static int memory_read_internal(value_list_t *vl) {
   gauge_t free;
 
   if (!port_host || !pagesize)
-    return (-1);
+    return -1;
 
   vm_data_len = sizeof(vm_data) / sizeof(natural_t);
   if ((status = host_statistics(port_host, HOST_VM_INFO, (host_info_t)&vm_data,
                                 &vm_data_len)) != KERN_SUCCESS) {
     ERROR("memory-plugin: host_statistics failed and returned the value %i",
           (int)status);
-    return (-1);
+    return -1;
   }
 
   /*
@@ -218,7 +218,7 @@ static int memory_read_internal(value_list_t *vl) {
 
   MEMORY_SUBMIT("wired", wired, "active", active, "inactive", inactive, "free",
                 free);
-/* #endif HAVE_HOST_STATISTICS */
+  /* #endif HAVE_HOST_STATISTICS */
 
 #elif HAVE_SYSCTLBYNAME
   /*
@@ -259,7 +259,7 @@ static int memory_read_internal(value_list_t *vl) {
                 (gauge_t)sysctl_vals[3], "active", (gauge_t)sysctl_vals[4],
                 "inactive", (gauge_t)sysctl_vals[5], "cache",
                 (gauge_t)sysctl_vals[6]);
-/* #endif HAVE_SYSCTLBYNAME */
+  /* #endif HAVE_SYSCTLBYNAME */
 
 #elif KERNEL_LINUX
   FILE *fh;
@@ -268,7 +268,7 @@ static int memory_read_internal(value_list_t *vl) {
   char *fields[8];
   int numfields;
 
-  _Bool detailed_slab_info = 0;
+  bool detailed_slab_info = false;
 
   gauge_t mem_total = 0;
   gauge_t mem_used = 0;
@@ -280,9 +280,8 @@ static int memory_read_internal(value_list_t *vl) {
   gauge_t mem_slab_unreclaimable = 0;
 
   if ((fh = fopen("/proc/meminfo", "r")) == NULL) {
-    char errbuf[1024];
-    WARNING("memory: fopen: %s", sstrerror(errno, errbuf, sizeof(errbuf)));
-    return (-1);
+    WARNING("memory: fopen: %s", STRERRNO);
+    return -1;
   }
 
   while (fgets(buffer, sizeof(buffer), fh) != NULL) {
@@ -300,10 +299,10 @@ static int memory_read_internal(value_list_t *vl) {
       val = &mem_slab_total;
     else if (strncasecmp(buffer, "SReclaimable:", 13) == 0) {
       val = &mem_slab_reclaimable;
-      detailed_slab_info = 1;
+      detailed_slab_info = true;
     } else if (strncasecmp(buffer, "SUnreclaim:", 11) == 0) {
       val = &mem_slab_unreclaimable;
-      detailed_slab_info = 1;
+      detailed_slab_info = true;
     } else
       continue;
 
@@ -315,12 +314,11 @@ static int memory_read_internal(value_list_t *vl) {
   }
 
   if (fclose(fh)) {
-    char errbuf[1024];
-    WARNING("memory: fclose: %s", sstrerror(errno, errbuf, sizeof(errbuf)));
+    WARNING("memory: fclose: %s", STRERRNO);
   }
 
   if (mem_total < (mem_free + mem_buffered + mem_cached + mem_slab_total))
-    return (-1);
+    return -1;
 
   mem_used =
       mem_total - (mem_free + mem_buffered + mem_cached + mem_slab_total);
@@ -336,7 +334,7 @@ static int memory_read_internal(value_list_t *vl) {
   else
     MEMORY_SUBMIT("used", mem_used, "buffered", mem_buffered, "cached",
                   mem_cached, "free", mem_free, "slab", mem_slab_total);
-/* #endif KERNEL_LINUX */
+    /* #endif KERNEL_LINUX */
 
 #elif HAVE_LIBKSTAT
   /* Most of the additions here were taken as-is from the k9toolkit from
@@ -353,9 +351,9 @@ static int memory_read_internal(value_list_t *vl) {
   long long availrmem;
 
   if (ksp == NULL)
-    return (-1);
+    return -1;
   if (ksz == NULL)
-    return (-1);
+    return -1;
 
   mem_used = get_kstat_value(ksp, "pagestotal");
   mem_free = get_kstat_value(ksp, "pagesfree");
@@ -370,7 +368,7 @@ static int memory_read_internal(value_list_t *vl) {
 
   if ((mem_used < 0LL) || (mem_free < 0LL) || (mem_lock < 0LL)) {
     WARNING("memory plugin: one of used, free or locked is negative.");
-    return (-1);
+    return -1;
   }
 
   mem_unus = physmem - mem_used;
@@ -408,7 +406,7 @@ static int memory_read_internal(value_list_t *vl) {
   MEMORY_SUBMIT("used", (gauge_t)mem_used, "free", (gauge_t)mem_free, "locked",
                 (gauge_t)mem_lock, "kernel", (gauge_t)mem_kern, "arc",
                 (gauge_t)arcsize, "unusable", (gauge_t)mem_unus);
-/* #endif HAVE_LIBKSTAT */
+  /* #endif HAVE_LIBKSTAT */
 
 #elif HAVE_SYSCTL
   int mib[] = {CTL_VM, VM_METER};
@@ -421,10 +419,8 @@ static int memory_read_internal(value_list_t *vl) {
   size = sizeof(vmtotal);
 
   if (sysctl(mib, 2, &vmtotal, &size, NULL, 0) < 0) {
-    char errbuf[1024];
-    WARNING("memory plugin: sysctl failed: %s",
-            sstrerror(errno, errbuf, sizeof(errbuf)));
-    return (-1);
+    WARNING("memory plugin: sysctl failed: %s", STRERRNO);
+    return -1;
   }
 
   assert(pagesize > 0);
@@ -434,27 +430,25 @@ static int memory_read_internal(value_list_t *vl) {
 
   MEMORY_SUBMIT("active", mem_active, "inactive", mem_inactive, "free",
                 mem_free);
-/* #endif HAVE_SYSCTL */
+  /* #endif HAVE_SYSCTL */
 
 #elif HAVE_LIBSTATGRAB
   sg_mem_stats *ios;
 
   ios = sg_get_mem_stats();
   if (ios == NULL)
-    return (-1);
+    return -1;
 
   MEMORY_SUBMIT("used", (gauge_t)ios->used, "cached", (gauge_t)ios->cache,
                 "free", (gauge_t)ios->free);
-/* #endif HAVE_LIBSTATGRAB */
+  /* #endif HAVE_LIBSTATGRAB */
 
 #elif HAVE_PERFSTAT
   perfstat_memory_total_t pmemory = {0};
 
   if (perfstat_memory_total(NULL, &pmemory, sizeof(pmemory), 1) < 0) {
-    char errbuf[1024];
-    WARNING("memory plugin: perfstat_memory_total failed: %s",
-            sstrerror(errno, errbuf, sizeof(errbuf)));
-    return (-1);
+    WARNING("memory plugin: perfstat_memory_total failed: %s", STRERRNO);
+    return -1;
   }
 
   /* Unfortunately, the AIX documentation is not very clear on how these
@@ -473,7 +467,7 @@ static int memory_read_internal(value_list_t *vl) {
                 (gauge_t)(pmemory.real_process * pagesize));
 #endif /* HAVE_PERFSTAT */
 
-  return (0);
+  return 0;
 } /* }}} int memory_read_internal */
 
 static int memory_read(void) /* {{{ */
@@ -487,7 +481,7 @@ static int memory_read(void) /* {{{ */
   sstrncpy(vl.type, "memory", sizeof(vl.type));
   vl.time = cdtime();
 
-  return (memory_read_internal(&vl));
+  return memory_read_internal(&vl);
 } /* }}} int memory_read */
 
 void module_register(void) {

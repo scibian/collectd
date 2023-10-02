@@ -1,6 +1,6 @@
 /**
  * collectd - src/wireless.c
- * Copyright (C) 2006,2007  Florian octo Forster
+ * Copyright (C) 2006-2018  Florian octo Forster
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -26,10 +26,14 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 
-#if !KERNEL_LINUX
+#if KERNEL_LINUX
+#include <linux/if.h>
+#include <linux/wireless.h>
+#include <sys/ioctl.h>
+#else
 #error "No applicable input method."
 #endif
 
@@ -47,7 +51,7 @@ static double wireless_dbm_to_watt (double dbm)
 
 	watt = pow (10.0, (dbm / 10.0)) / 1000.0;
 
-	return (watt);
+	return watt;
 }
 #endif
 
@@ -69,7 +73,7 @@ static void wireless_submit(const char *plugin_instance, const char *type,
 static double wireless_percent_to_power(double quality) {
   assert((quality >= 0.0) && (quality <= 100.0));
 
-  return ((quality * (POWER_MAX - POWER_MIN)) + POWER_MIN);
+  return (quality * (POWER_MAX - POWER_MIN)) + POWER_MIN;
 } /* double wireless_percent_to_power */
 
 static int wireless_read(void) {
@@ -86,13 +90,19 @@ static int wireless_read(void) {
   int numfields;
 
   int devices_found;
-  int len;
+  size_t len;
 
   /* there are a variety of names for the wireless device */
   if ((fh = fopen(WIRELESS_PROC_FILE, "r")) == NULL) {
-    char errbuf[1024];
-    WARNING("wireless: fopen: %s", sstrerror(errno, errbuf, sizeof(errbuf)));
-    return (-1);
+    ERROR("wireless plugin: fopen: %s", STRERRNO);
+    return -1;
+  }
+
+  int sock = socket(AF_INET, SOCK_DGRAM, 0);
+  if (sock == -1) {
+    ERROR("wireless plugin: socket: %s", STRERRNO);
+    fclose(fh);
+    return -1;
   }
 
   devices_found = 0;
@@ -143,18 +153,29 @@ static int wireless_read(void) {
     wireless_submit(device, "signal_power", power);
     wireless_submit(device, "signal_noise", noise);
 
+    struct iwreq req = {
+        .ifr_ifrn.ifrn_name = {0},
+    };
+    sstrncpy(req.ifr_ifrn.ifrn_name, device, sizeof(req.ifr_ifrn.ifrn_name));
+    if (ioctl(sock, SIOCGIWRATE, &req) == -1) {
+      WARNING("wireless plugin: ioctl(SIOCGIWRATE): %s", STRERRNO);
+    } else {
+      wireless_submit(device, "bitrate", (double)req.u.bitrate.value);
+    }
+
     devices_found++;
   }
 
+  close(sock);
   fclose(fh);
 
   /* If no wireless devices are present return an error, so the plugin
    * code delays our read function. */
   if (devices_found == 0)
-    return (-1);
+    return -1;
 #endif /* KERNEL_LINUX */
 
-  return (0);
+  return 0;
 } /* int wireless_read */
 
 void module_register(void) {

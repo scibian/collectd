@@ -27,8 +27,8 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 
 #include <asm/types.h>
 
@@ -56,6 +56,7 @@ struct ir_link_stats_storage_s {
   uint64_t tx_dropped;
   uint64_t multicast;
   uint64_t collisions;
+  uint64_t rx_nohandler;
 
   uint64_t rx_length_errors;
   uint64_t rx_over_errors;
@@ -85,13 +86,18 @@ typedef struct ir_ignorelist_s {
   struct ir_ignorelist_s *next;
 } ir_ignorelist_t;
 
+struct qos_stats {
+  struct gnet_stats_basic *bs;
+  struct gnet_stats_queue *qs;
+};
+
 static int ir_ignorelist_invert = 1;
-static ir_ignorelist_t *ir_ignorelist_head = NULL;
+static ir_ignorelist_t *ir_ignorelist_head;
 
 static struct mnl_socket *nl;
 
-static char **iflist = NULL;
-static size_t iflist_len = 0;
+static char **iflist;
+static size_t iflist_len;
 
 static const char *config_keys[] = {"Interface", "VerboseInterface",
                                     "QDisc",     "Class",
@@ -103,13 +109,13 @@ static int add_ignorelist(const char *dev, const char *type, const char *inst) {
 
   entry = calloc(1, sizeof(*entry));
   if (entry == NULL)
-    return (-1);
+    return -1;
 
   if (strcasecmp(dev, "All") != 0) {
     entry->device = strdup(dev);
     if (entry->device == NULL) {
       sfree(entry);
-      return (-1);
+      return -1;
     }
   }
 
@@ -117,7 +123,7 @@ static int add_ignorelist(const char *dev, const char *type, const char *inst) {
   if (entry->type == NULL) {
     sfree(entry->device);
     sfree(entry);
-    return (-1);
+    return -1;
   }
 
   if (inst != NULL) {
@@ -126,14 +132,14 @@ static int add_ignorelist(const char *dev, const char *type, const char *inst) {
       sfree(entry->type);
       sfree(entry->device);
       sfree(entry);
-      return (-1);
+      return -1;
     }
   }
 
   entry->next = ir_ignorelist_head;
   ir_ignorelist_head = entry;
 
-  return (0);
+  return 0;
 } /* int add_ignorelist */
 
 /*
@@ -145,7 +151,7 @@ static int check_ignorelist(const char *dev, const char *type,
   assert((dev != NULL) && (type != NULL));
 
   if (ir_ignorelist_head == NULL)
-    return (ir_ignorelist_invert ? 0 : 1);
+    return ir_ignorelist_invert ? 0 : 1;
 
   for (ir_ignorelist_t *i = ir_ignorelist_head; i != NULL; i = i->next) {
     /* i->device == NULL  =>  match all devices */
@@ -166,10 +172,10 @@ static int check_ignorelist(const char *dev, const char *type,
           i->device == NULL ? "(nil)" : i->device, i->type,
           i->inst == NULL ? "(nil)" : i->inst);
 
-    return (ir_ignorelist_invert ? 0 : 1);
+    return ir_ignorelist_invert ? 0 : 1;
   } /* for i */
 
-  return (ir_ignorelist_invert);
+  return ir_ignorelist_invert;
 } /* int check_ignorelist */
 
 static void submit_one(const char *dev, const char *type,
@@ -192,7 +198,8 @@ static void submit_two(const char *dev, const char *type,
                        const char *type_instance, derive_t rx, derive_t tx) {
   value_list_t vl = VALUE_LIST_INIT;
   value_t values[] = {
-      {.derive = rx}, {.derive = tx},
+      {.derive = rx},
+      {.derive = tx},
   };
 
   vl.values = values;
@@ -216,7 +223,7 @@ static int update_iflist(struct ifinfomsg *msg, const char *dev) {
     temp = realloc(iflist, (msg->ifi_index + 1) * sizeof(char *));
     if (temp == NULL) {
       ERROR("netlink plugin: update_iflist: realloc failed.");
-      return (-1);
+      return -1;
     }
 
     memset(temp + iflist_len, '\0',
@@ -230,7 +237,7 @@ static int update_iflist(struct ifinfomsg *msg, const char *dev) {
     iflist[msg->ifi_index] = strdup(dev);
   }
 
-  return (0);
+  return 0;
 } /* int update_iflist */
 
 static void check_ignorelist_and_submit(const char *dev,
@@ -248,6 +255,10 @@ static void check_ignorelist_and_submit(const char *dev,
     submit_two(dev, "if_dropped", NULL, stats->rx_dropped, stats->tx_dropped);
     submit_one(dev, "if_multicast", NULL, stats->multicast);
     submit_one(dev, "if_collisions", NULL, stats->collisions);
+#if defined(HAVE_STRUCT_RTNL_LINK_STATS_RX_NOHANDLER) ||                       \
+    defined(HAVE_STRUCT_RTNL_LINK_STATS64_RX_NOHANDLER)
+    submit_one(dev, "if_rx_nohandler", NULL, stats->rx_nohandler);
+#endif
 
     submit_one(dev, "if_rx_errors", "length", stats->rx_length_errors);
     submit_one(dev, "if_rx_errors", "over", stats->rx_over_errors);
@@ -299,6 +310,9 @@ static void check_ignorelist_and_submit64(const char *dev,
   struct ir_link_stats_storage_s s;
 
   COPY_RTNL_LINK_STATS(&s, stats);
+#ifdef HAVE_STRUCT_RTNL_LINK_STATS64_RX_NOHANDLER
+  COPY_RTNL_LINK_VALUE(&s, stats, rx_nohandler);
+#endif
 
   check_ignorelist_and_submit(dev, &s);
 }
@@ -309,6 +323,9 @@ static void check_ignorelist_and_submit32(const char *dev,
   struct ir_link_stats_storage_s s;
 
   COPY_RTNL_LINK_STATS(&s, stats);
+#ifdef HAVE_STRUCT_RTNL_LINK_STATS_RX_NOHANDLER
+  COPY_RTNL_LINK_VALUE(&s, stats, rx_nohandler);
+#endif
 
   check_ignorelist_and_submit(dev, &s);
 }
@@ -352,9 +369,10 @@ static int link_filter_cb(const struct nlmsghdr *nlh,
     if (mnl_attr_get_type(attr) != IFLA_STATS64)
       continue;
 
-    if (mnl_attr_validate2(attr, MNL_TYPE_UNSPEC, sizeof(*stats.stats64)) < 0) {
-      ERROR("netlink plugin: link_filter_cb: IFLA_STATS64 mnl_attr_validate2 "
-            "failed.");
+    uint16_t attr_len = mnl_attr_get_payload_len(attr);
+    if (attr_len < sizeof(*stats.stats64)) {
+      ERROR("netlink plugin: link_filter_cb: IFLA_STATS64 attribute has "
+            "insufficient data.");
       return MNL_CB_ERROR;
     }
     stats.stats64 = mnl_attr_get_payload(attr);
@@ -368,9 +386,10 @@ static int link_filter_cb(const struct nlmsghdr *nlh,
     if (mnl_attr_get_type(attr) != IFLA_STATS)
       continue;
 
-    if (mnl_attr_validate2(attr, MNL_TYPE_UNSPEC, sizeof(*stats.stats32)) < 0) {
-      ERROR("netlink plugin: link_filter_cb: IFLA_STATS mnl_attr_validate2 "
-            "failed.");
+    uint16_t attr_len = mnl_attr_get_payload_len(attr);
+    if (attr_len < sizeof(*stats.stats32)) {
+      ERROR("netlink plugin: link_filter_cb: IFLA_STATS attribute has "
+            "insufficient data.");
       return MNL_CB_ERROR;
     }
     stats.stats32 = mnl_attr_get_payload(attr);
@@ -387,20 +406,31 @@ static int link_filter_cb(const struct nlmsghdr *nlh,
 
 #if HAVE_TCA_STATS2
 static int qos_attr_cb(const struct nlattr *attr, void *data) {
-  struct gnet_stats_basic **bs = (struct gnet_stats_basic **)data;
+  struct qos_stats *q_stats = (struct qos_stats *)data;
 
   /* skip unsupported attribute in user-space */
   if (mnl_attr_type_valid(attr, TCA_STATS_MAX) < 0)
     return MNL_CB_OK;
 
   if (mnl_attr_get_type(attr) == TCA_STATS_BASIC) {
-    if (mnl_attr_validate2(attr, MNL_TYPE_UNSPEC, sizeof(**bs)) < 0) {
+    if (mnl_attr_validate2(attr, MNL_TYPE_UNSPEC, sizeof(*q_stats->bs)) < 0) {
       ERROR("netlink plugin: qos_attr_cb: TCA_STATS_BASIC mnl_attr_validate2 "
+            "failed: %s",
+            STRERRNO);
+      return MNL_CB_ERROR;
+    }
+    q_stats->bs = mnl_attr_get_payload(attr);
+    return MNL_CB_OK;
+  }
+
+  if (mnl_attr_get_type(attr) == TCA_STATS_QUEUE) {
+    if (mnl_attr_validate2(attr, MNL_TYPE_UNSPEC, sizeof(*q_stats->qs)) < 0) {
+      ERROR("netlink plugin: qos_attr_cb: TCA_STATS_QUEUE mnl_attr_validate2 "
             "failed.");
       return MNL_CB_ERROR;
     }
-    *bs = mnl_attr_get_payload(attr);
-    return MNL_CB_STOP;
+    q_stats->qs = mnl_attr_get_payload(attr);
+    return MNL_CB_OK;
   }
 
   return MNL_CB_OK;
@@ -420,7 +450,7 @@ static int qos_filter_cb(const struct nlmsghdr *nlh, void *args) {
   const char *tc_type;
   char tc_inst[DATA_MAX_NAME_LEN];
 
-  _Bool stats_submitted = 0;
+  bool stats_submitted = false;
 
   if (nlh->nlmsg_type == RTM_NEWQDISC)
     tc_type = "qdisc";
@@ -443,7 +473,7 @@ static int qos_filter_cb(const struct nlmsghdr *nlh, void *args) {
 
   if ((tm->tcm_ifindex >= 0) && ((size_t)tm->tcm_ifindex >= iflist_len)) {
     ERROR("netlink plugin: qos_filter_cb: tm->tcm_ifindex = %i "
-          ">= iflist_len = %zu",
+          ">= iflist_len = %" PRIsz,
           tm->tcm_ifindex, iflist_len);
     return MNL_CB_ERROR;
   }
@@ -470,7 +500,7 @@ static int qos_filter_cb(const struct nlmsghdr *nlh, void *args) {
 
   if (kind == NULL) {
     ERROR("netlink plugin: qos_filter_cb: kind == NULL");
-    return (-1);
+    return -1;
   }
 
   { /* The ID */
@@ -492,7 +522,9 @@ static int qos_filter_cb(const struct nlmsghdr *nlh, void *args) {
 
 #if HAVE_TCA_STATS2
   mnl_attr_for_each(attr, nlh, sizeof(*tm)) {
-    struct gnet_stats_basic *bs = NULL;
+    struct qos_stats q_stats;
+
+    memset(&q_stats, 0x0, sizeof(q_stats));
 
     if (mnl_attr_get_type(attr) != TCA_STATS2)
       continue;
@@ -503,18 +535,28 @@ static int qos_filter_cb(const struct nlmsghdr *nlh, void *args) {
       return MNL_CB_ERROR;
     }
 
-    mnl_attr_parse_nested(attr, qos_attr_cb, &bs);
+    mnl_attr_parse_nested(attr, qos_attr_cb, &q_stats);
 
-    if (bs != NULL) {
+    if (q_stats.bs != NULL || q_stats.qs != NULL) {
       char type_instance[DATA_MAX_NAME_LEN];
 
-      stats_submitted = 1;
+      stats_submitted = true;
 
-      ssnprintf(type_instance, sizeof(type_instance), "%s-%s", tc_type,
-                tc_inst);
+      int r = ssnprintf(type_instance, sizeof(type_instance), "%s-%s", tc_type,
+                        tc_inst);
+      if ((size_t)r >= sizeof(type_instance)) {
+        ERROR("netlink plugin: type_instance truncated to %zu bytes, need %d",
+              sizeof(type_instance), r);
+        return MNL_CB_ERROR;
+      }
 
-      submit_one(dev, "ipt_bytes", type_instance, bs->bytes);
-      submit_one(dev, "ipt_packets", type_instance, bs->packets);
+      if (q_stats.bs != NULL) {
+        submit_one(dev, "ipt_bytes", type_instance, q_stats.bs->bytes);
+        submit_one(dev, "ipt_packets", type_instance, q_stats.bs->packets);
+      }
+      if (q_stats.qs != NULL) {
+        submit_one(dev, "if_tx_dropped", type_instance, q_stats.qs->drops);
+      }
     }
 
     break;
@@ -530,7 +572,8 @@ static int qos_filter_cb(const struct nlmsghdr *nlh, void *args) {
 
     if (mnl_attr_validate2(attr, MNL_TYPE_UNSPEC, sizeof(*ts)) < 0) {
       ERROR("netlink plugin: qos_filter_cb: TCA_STATS mnl_attr_validate2 "
-            "failed.");
+            "failed: %s",
+            STRERRNO);
       return MNL_CB_ERROR;
     }
     ts = mnl_attr_get_payload(attr);
@@ -538,8 +581,13 @@ static int qos_filter_cb(const struct nlmsghdr *nlh, void *args) {
     if (!stats_submitted && ts != NULL) {
       char type_instance[DATA_MAX_NAME_LEN];
 
-      ssnprintf(type_instance, sizeof(type_instance), "%s-%s", tc_type,
-                tc_inst);
+      int r = ssnprintf(type_instance, sizeof(type_instance), "%s-%s", tc_type,
+                        tc_inst);
+      if ((size_t)r >= sizeof(type_instance)) {
+        ERROR("netlink plugin: type_instance truncated to %zu bytes, need %d",
+              sizeof(type_instance), r);
+        return MNL_CB_ERROR;
+      }
 
       submit_one(dev, "ipt_bytes", type_instance, ts->bytes);
       submit_one(dev, "ipt_packets", type_instance, ts->packets);
@@ -566,12 +614,12 @@ static int ir_config(const char *key, const char *value) {
 
   new_val = strdup(value);
   if (new_val == NULL)
-    return (-1);
+    return -1;
 
   fields_num = strsplit(new_val, fields, STATIC_ARRAY_SIZE(fields));
   if ((fields_num < 1) || (fields_num > 8)) {
     sfree(new_val);
-    return (-1);
+    return -1;
   }
 
   if ((strcasecmp(key, "Interface") == 0) ||
@@ -594,7 +642,7 @@ static int ir_config(const char *key, const char *value) {
       ERROR("netlink plugin: Invalid number of fields for option "
             "`%s'. Got %i, expected 1 or 2.",
             key, fields_num);
-      return (-1);
+      return -1;
     } else {
       add_ignorelist(fields[0], key, (fields_num == 2) ? fields[1] : NULL);
       status = 0;
@@ -616,22 +664,22 @@ static int ir_config(const char *key, const char *value) {
 
   sfree(new_val);
 
-  return (status);
+  return status;
 } /* int ir_config */
 
 static int ir_init(void) {
   nl = mnl_socket_open(NETLINK_ROUTE);
   if (nl == NULL) {
     ERROR("netlink plugin: ir_init: mnl_socket_open failed.");
-    return (-1);
+    return -1;
   }
 
   if (mnl_socket_bind(nl, 0, MNL_SOCKET_AUTOPID) < 0) {
     ERROR("netlink plugin: ir_init: mnl_socket_bind failed.");
-    return (-1);
+    return -1;
   }
 
-  return (0);
+  return 0;
 } /* int ir_init */
 
 static int ir_read(void) {
@@ -655,7 +703,7 @@ static int ir_read(void) {
 
   if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0) {
     ERROR("netlink plugin: ir_read: rtnl_wilddump_request failed.");
-    return (-1);
+    return -1;
   }
 
   ret = mnl_socket_recvfrom(nl, buf, sizeof(buf));
@@ -666,7 +714,7 @@ static int ir_read(void) {
     ret = mnl_socket_recvfrom(nl, buf, sizeof(buf));
   }
   if (ret < 0) {
-    ERROR("netlink plugin: ir_read: mnl_socket_recvfrom failed.");
+    ERROR("netlink plugin: ir_read: mnl_socket_recvfrom failed: %s", STRERRNO);
     return (-1);
   }
 
@@ -687,7 +735,7 @@ static int ir_read(void) {
         continue;
       }
 
-      DEBUG("netlink plugin: ir_read: querying %s from %s (%zu).",
+      DEBUG("netlink plugin: ir_read: querying %s from %s (%" PRIsz ").",
             type_name[type_index], iflist[ifindex], ifindex);
 
       nlh = mnl_nlmsg_put_header(buf);
@@ -711,14 +759,14 @@ static int ir_read(void) {
         ret = mnl_socket_recvfrom(nl, buf, sizeof(buf));
       }
       if (ret < 0) {
-        ERROR("netlink plugin: ir_read:mnl_socket_recvfrom failed.");
+        ERROR("netlink plugin: ir_read: mnl_socket_recvfrom failed: %s",
+              STRERRNO);
         continue;
       }
-
     } /* for (type_index) */
   }   /* for (if_index) */
 
-  return (0);
+  return 0;
 } /* int ir_read */
 
 static int ir_shutdown(void) {
@@ -727,7 +775,7 @@ static int ir_shutdown(void) {
     nl = NULL;
   }
 
-  return (0);
+  return 0;
 } /* int ir_shutdown */
 
 void module_register(void) {
@@ -736,7 +784,3 @@ void module_register(void) {
   plugin_register_read("netlink", ir_read);
   plugin_register_shutdown("netlink", ir_shutdown);
 } /* void module_register */
-
-/*
- * vim: set shiftwidth=2 softtabstop=2 tabstop=8 :
- */

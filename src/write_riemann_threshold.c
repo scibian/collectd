@@ -27,14 +27,12 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
-#include "utils_avltree.h"
+#include "utils/avltree/avltree.h"
+#include "utils/common/common.h"
 #include "utils_cache.h"
 #include "utils_threshold.h"
 #include "write_riemann_threshold.h"
-
-#include <ltdl.h>
 
 /*
  * Threshold management
@@ -65,7 +63,7 @@ static int ut_check_one_data_source(
   if (ds != NULL) {
     ds_name = ds->ds[ds_index].name;
     if ((th->data_source[0] != 0) && (strcmp(ds_name, th->data_source) != 0))
-      return (STATE_OKAY);
+      return STATE_UNKNOWN;
   }
 
   if ((th->flags & UT_FLAG_INVERT) != 0) {
@@ -75,15 +73,16 @@ static int ut_check_one_data_source(
 
   /* XXX: This is an experimental code, not optimized, not fast, not reliable,
    * and probably, do not work as you expect. Enjoy! :D */
-  if ((th->hysteresis > 0) &&
-      ((prev_state = uc_get_state(ds, vl)) != STATE_OKAY)) {
+  prev_state = uc_get_state(ds, vl);
+  if ((th->hysteresis > 0) && (prev_state != STATE_OKAY) &&
+      (prev_state != STATE_UNKNOWN)) {
     switch (prev_state) {
     case STATE_ERROR:
       if ((!isnan(th->failure_min) &&
            ((th->failure_min + th->hysteresis) < values[ds_index])) ||
           (!isnan(th->failure_max) &&
            ((th->failure_max - th->hysteresis) > values[ds_index])))
-        return (STATE_OKAY);
+        return STATE_OKAY;
       else
         is_failure++;
     case STATE_WARNING:
@@ -91,7 +90,7 @@ static int ut_check_one_data_source(
            ((th->warning_min + th->hysteresis) < values[ds_index])) ||
           (!isnan(th->warning_max) &&
            ((th->warning_max - th->hysteresis) > values[ds_index])))
-        return (STATE_OKAY);
+        return STATE_OKAY;
       else
         is_warning++;
     }
@@ -106,12 +105,12 @@ static int ut_check_one_data_source(
   }
 
   if (is_failure != 0)
-    return (STATE_ERROR);
+    return STATE_ERROR;
 
   if (is_warning != 0)
-    return (STATE_WARNING);
+    return STATE_WARNING;
 
-  return (STATE_OKAY);
+  return STATE_OKAY;
 } /* }}} int ut_check_one_data_source */
 
 /*
@@ -172,7 +171,7 @@ static int ut_check_one_threshold(const data_set_t *ds, const value_list_t *vl,
     }
   } /* for (ds->ds_num) */
 
-  return (ret);
+  return ret;
 } /* }}} int ut_check_one_threshold */
 
 /*
@@ -202,20 +201,20 @@ int write_riemann_threshold_check(const data_set_t *ds, const value_list_t *vl,
   th = threshold_search(vl);
   pthread_mutex_unlock(&threshold_lock);
   if (th == NULL)
-    return (0);
+    return 0;
 
   DEBUG("ut_check_threshold: Found matching threshold(s)");
 
   values = uc_get_rate(ds, vl);
   if (values == NULL)
-    return (0);
+    return 0;
 
   while (th != NULL) {
     status = ut_check_one_threshold(ds, vl, th, values, statuses);
     if (status < 0) {
       ERROR("ut_check_threshold: ut_check_one_threshold failed.");
       sfree(values);
-      return (-1);
+      return -1;
     }
 
     th = th->next;
@@ -223,7 +222,5 @@ int write_riemann_threshold_check(const data_set_t *ds, const value_list_t *vl,
 
   sfree(values);
 
-  return (0);
+  return 0;
 } /* }}} int ut_check_threshold */
-
-/* vim: set sw=2 ts=8 sts=2 tw=78 et fdm=marker : */

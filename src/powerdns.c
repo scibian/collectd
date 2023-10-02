@@ -26,8 +26,8 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 #include "utils_llist.h"
 
 #include <errno.h>
@@ -44,15 +44,12 @@
 #endif
 #define FUNC_ERROR(func)                                                       \
   do {                                                                         \
-    char errbuf[1024];                                                         \
-    ERROR("powerdns plugin: %s failed: %s", func,                              \
-          sstrerror(errno, errbuf, sizeof(errbuf)));                           \
+    ERROR("powerdns plugin: %s failed: %s", func, STRERRNO);                   \
   } while (0)
 #define SOCK_ERROR(func, sockpath)                                             \
   do {                                                                         \
-    char errbuf[1024];                                                         \
     ERROR("powerdns plugin: Socket `%s` %s failed: %s", sockpath, func,        \
-          sstrerror(errno, errbuf, sizeof(errbuf)));                           \
+          STRERRNO);                                                           \
   } while (0)
 
 #define SERVER_SOCKET LOCALSTATEDIR "/run/pdns.controlsocket"
@@ -282,7 +279,7 @@ static statname_lookup_t lookup_table[] = /* {{{ */
         {"ipv6-questions", "dns_question", "incoming-ipv6"},
         {"malloc-bytes", "gauge", "malloc_bytes"},
         {"max-mthread-stack", "gauge", "max_mthread_stack"},
-        {"no-packet-error", "gauge", "no_packet_error"},
+        {"no-packet-error", "errors", "no_packet_error"},
         {"noedns-outqueries", "dns_question", "outgoing-noedns"},
         {"noping-outqueries", "dns_question", "outgoing-noping"},
         {"over-capacity-drops", "dns_question", "incoming-over_capacity"},
@@ -307,10 +304,10 @@ static statname_lookup_t lookup_table[] = /* {{{ */
         {"uptime", "uptime", NULL}}; /* }}} */
 static int lookup_table_length = STATIC_ARRAY_SIZE(lookup_table);
 
-static llist_t *list = NULL;
+static llist_t *list;
 
 #define PDNS_LOCAL_SOCKPATH LOCALSTATEDIR "/run/" PACKAGE_NAME "-powerdns"
-static char *local_sockpath = NULL;
+static char *local_sockpath;
 
 /* TODO: Do this before 4.4:
  * - Update the collectd.conf(5) manpage.
@@ -355,16 +352,13 @@ static void submit(const char *plugin_instance, /* {{{ */
   }
 
   if (ds->ds_num != 1) {
-    ERROR("powerdns plugin: type `%s' has %zu data sources, "
+    ERROR("powerdns plugin: type `%s' has %" PRIsz " data sources, "
           "but I can only handle one.",
           type, ds->ds_num);
     return;
   }
 
   if (0 != parse_value(value_str, &value, ds->ds[0].type)) {
-    ERROR("powerdns plugin: Cannot convert `%s' "
-          "to a number.",
-          value_str);
     return;
   }
 
@@ -379,8 +373,8 @@ static void submit(const char *plugin_instance, /* {{{ */
   plugin_dispatch_values(&vl);
 } /* }}} static void submit */
 
-static int powerdns_get_data_dgram(list_item_t *item, /* {{{ */
-                                   char **ret_buffer, size_t *ret_buffer_size) {
+static int powerdns_get_data_dgram(list_item_t *item, char **ret_buffer) {
+  /* {{{ */
   int sd;
   int status;
 
@@ -395,7 +389,7 @@ static int powerdns_get_data_dgram(list_item_t *item, /* {{{ */
   sd = socket(PF_UNIX, item->socktype, 0);
   if (sd < 0) {
     FUNC_ERROR("socket");
-    return (-1);
+    return -1;
   }
 
   sa_unix.sun_family = AF_UNIX;
@@ -407,7 +401,7 @@ static int powerdns_get_data_dgram(list_item_t *item, /* {{{ */
   if ((status != 0) && (errno != ENOENT)) {
     SOCK_ERROR("unlink", sa_unix.sun_path);
     close(sd);
-    return (-1);
+    return -1;
   }
 
   do /* while (0) */
@@ -465,27 +459,24 @@ static int powerdns_get_data_dgram(list_item_t *item, /* {{{ */
   unlink(sa_unix.sun_path);
 
   if (status != 0)
-    return (-1);
+    return -1;
 
   assert(buffer_size > 0);
   buffer = malloc(buffer_size);
   if (buffer == NULL) {
     FUNC_ERROR("malloc");
-    return (-1);
+    return -1;
   }
 
   memcpy(buffer, temp, buffer_size - 1);
-  buffer[buffer_size - 1] = 0;
+  buffer[buffer_size - 1] = '\0';
 
   *ret_buffer = buffer;
-  *ret_buffer_size = buffer_size;
-
-  return (0);
+  return 0;
 } /* }}} int powerdns_get_data_dgram */
 
-static int powerdns_get_data_stream(list_item_t *item, /* {{{ */
-                                    char **ret_buffer,
-                                    size_t *ret_buffer_size) {
+static int powerdns_get_data_stream(list_item_t *item, char **ret_buffer) {
+  /* {{{ */
   int sd;
   int status;
 
@@ -496,7 +487,7 @@ static int powerdns_get_data_stream(list_item_t *item, /* {{{ */
   sd = socket(PF_UNIX, item->socktype, 0);
   if (sd < 0) {
     FUNC_ERROR("socket");
-    return (-1);
+    return -1;
   }
 
   struct timeval timeout;
@@ -506,7 +497,7 @@ static int powerdns_get_data_stream(list_item_t *item, /* {{{ */
   if (status != 0) {
     FUNC_ERROR("setsockopt");
     close(sd);
-    return (-1);
+    return -1;
   }
 
   status =
@@ -514,7 +505,7 @@ static int powerdns_get_data_stream(list_item_t *item, /* {{{ */
   if (status != 0) {
     SOCK_ERROR("connect", item->sockaddr.sun_path);
     close(sd);
-    return (-1);
+    return -1;
   }
 
   /* strlen + 1, because we need to send the terminating NULL byte, too. */
@@ -523,7 +514,7 @@ static int powerdns_get_data_stream(list_item_t *item, /* {{{ */
   if (status < 0) {
     SOCK_ERROR("send", item->sockaddr.sun_path);
     close(sd);
-    return (-1);
+    return -1;
   }
 
   while (42) {
@@ -533,13 +524,14 @@ static int powerdns_get_data_stream(list_item_t *item, /* {{{ */
     if (status < 0) {
       SOCK_ERROR("recv", item->sockaddr.sun_path);
       break;
-    } else if (status == 0)
+    } else if (status == 0) {
       break;
+    }
 
     buffer_new = realloc(buffer, buffer_size + status + 1);
     if (buffer_new == NULL) {
       FUNC_ERROR("realloc");
-      status = -1;
+      status = ENOMEM;
       break;
     }
     buffer = buffer_new;
@@ -550,61 +542,50 @@ static int powerdns_get_data_stream(list_item_t *item, /* {{{ */
   } /* while (42) */
   close(sd);
 
-  if (status < 0) {
+  if (status != 0) {
     sfree(buffer);
-  } else {
-    assert(status == 0);
-    *ret_buffer = buffer;
-    *ret_buffer_size = buffer_size;
+    return status;
   }
 
-  return (status);
+  *ret_buffer = buffer;
+  return 0;
 } /* }}} int powerdns_get_data_stream */
 
-static int powerdns_get_data(list_item_t *item, char **ret_buffer,
-                             size_t *ret_buffer_size) {
+static int powerdns_get_data(list_item_t *item, char **ret_buffer) {
   if (item->socktype == SOCK_DGRAM)
-    return (powerdns_get_data_dgram(item, ret_buffer, ret_buffer_size));
+    return powerdns_get_data_dgram(item, ret_buffer);
   else if (item->socktype == SOCK_STREAM)
-    return (powerdns_get_data_stream(item, ret_buffer, ret_buffer_size));
+    return powerdns_get_data_stream(item, ret_buffer);
   else {
     ERROR("powerdns plugin: Unknown socket type: %i", (int)item->socktype);
-    return (-1);
+    return -1;
   }
 } /* int powerdns_get_data */
 
 static int powerdns_read_server(list_item_t *item) /* {{{ */
 {
-  char *buffer = NULL;
-  size_t buffer_size = 0;
-  int status;
-
-  char *dummy;
-  char *saveptr;
-
-  char *key;
-  char *value;
-
-  const char *const *fields;
-  int fields_num;
-
   if (item->command == NULL)
     item->command = strdup(SERVER_COMMAND);
   if (item->command == NULL) {
     ERROR("powerdns plugin: strdup failed.");
-    return (-1);
+    return -1;
   }
 
-  status = powerdns_get_data(item, &buffer, &buffer_size);
-  if (status != 0)
-    return (-1);
+  char *buffer = NULL;
+  int status = powerdns_get_data(item, &buffer);
+  if (status != 0) {
+    ERROR("powerdns plugin: powerdns_get_data failed.");
+    return status;
+  }
+  if (buffer == NULL) {
+    return EINVAL;
+  }
 
+  const char *const *fields = default_server_fields;
+  int fields_num = default_server_fields_num;
   if (item->fields_num != 0) {
     fields = (const char *const *)item->fields;
     fields_num = item->fields_num;
-  } else {
-    fields = default_server_fields;
-    fields_num = default_server_fields_num;
   }
 
   assert(fields != NULL);
@@ -612,12 +593,13 @@ static int powerdns_read_server(list_item_t *item) /* {{{ */
 
   /* corrupt-packets=0,deferred-cache-inserts=0,deferred-cache-lookup=0,latency=0,packetcache-hit=0,packetcache-miss=0,packetcache-size=0,qsize-q=0,query-cache-hit=0,query-cache-miss=0,recursing-answers=0,recursing-questions=0,servfail-packets=0,tcp-answers=0,tcp-queries=0,timedout-packets=0,udp-answers=0,udp-queries=0,udp4-answers=0,udp4-queries=0,udp6-answers=0,udp6-queries=0,
    */
-  dummy = buffer;
-  saveptr = NULL;
+  char *dummy = buffer;
+  char *saveptr = NULL;
+  char *key;
   while ((key = strtok_r(dummy, ",", &saveptr)) != NULL) {
     dummy = NULL;
 
-    value = strchr(key, '=');
+    char *value = strchr(key, '=');
     if (value == NULL)
       break;
 
@@ -640,7 +622,7 @@ static int powerdns_read_server(list_item_t *item) /* {{{ */
 
   sfree(buffer);
 
-  return (0);
+  return 0;
 } /* }}} int powerdns_read_server */
 
 /*
@@ -656,7 +638,7 @@ static int powerdns_update_recursor_command(list_item_t *li) /* {{{ */
   int status;
 
   if (li == NULL)
-    return (0);
+    return 0;
 
   if (li->fields_num < 1) {
     sstrncpy(buffer, RECURSOR_COMMAND, sizeof(buffer));
@@ -667,7 +649,7 @@ static int powerdns_update_recursor_command(list_item_t *li) /* {{{ */
                      /* seperator = */ " ");
     if (status < 0) {
       ERROR("powerdns plugin: strjoin failed.");
-      return (-1);
+      return -1;
     }
     buffer[sizeof(buffer) - 1] = 0;
     size_t len = strlen(buffer);
@@ -682,16 +664,15 @@ static int powerdns_update_recursor_command(list_item_t *li) /* {{{ */
   li->command = strdup(buffer);
   if (li->command == NULL) {
     ERROR("powerdns plugin: strdup failed.");
-    return (-1);
+    return -1;
   }
 
-  return (0);
+  return 0;
 } /* }}} int powerdns_update_recursor_command */
 
 static int powerdns_read_recursor(list_item_t *item) /* {{{ */
 {
   char *buffer = NULL;
-  size_t buffer_size = 0;
   int status;
 
   char *dummy;
@@ -706,7 +687,7 @@ static int powerdns_read_recursor(list_item_t *item) /* {{{ */
     status = powerdns_update_recursor_command(item);
     if (status != 0) {
       ERROR("powerdns plugin: powerdns_update_recursor_command failed.");
-      return (-1);
+      return -1;
     }
 
     DEBUG("powerdns plugin: powerdns_read_recursor: item->command = %s;",
@@ -714,17 +695,17 @@ static int powerdns_read_recursor(list_item_t *item) /* {{{ */
   }
   assert(item->command != NULL);
 
-  status = powerdns_get_data(item, &buffer, &buffer_size);
+  status = powerdns_get_data(item, &buffer);
   if (status != 0) {
     ERROR("powerdns plugin: powerdns_get_data failed.");
-    return (-1);
+    return -1;
   }
 
   keys_list = strdup(item->command);
   if (keys_list == NULL) {
     FUNC_ERROR("strdup");
     sfree(buffer);
-    return (-1);
+    return -1;
   }
 
   key_saveptr = NULL;
@@ -747,7 +728,7 @@ static int powerdns_read_recursor(list_item_t *item) /* {{{ */
   sfree(buffer);
   sfree(keys_list);
 
-  return (0);
+  return 0;
 } /* }}} int powerdns_read_recursor */
 
 static int powerdns_config_add_collect(list_item_t *li, /* {{{ */
@@ -757,21 +738,21 @@ static int powerdns_config_add_collect(list_item_t *li, /* {{{ */
   if (ci->values_num < 1) {
     WARNING("powerdns plugin: The `Collect' option needs "
             "at least one argument.");
-    return (-1);
+    return -1;
   }
 
   for (int i = 0; i < ci->values_num; i++)
     if (ci->values[i].type != OCONFIG_TYPE_STRING) {
       WARNING("powerdns plugin: Only string arguments are allowed to "
               "the `Collect' option.");
-      return (-1);
+      return -1;
     }
 
   temp =
       realloc(li->fields, sizeof(char *) * (li->fields_num + ci->values_num));
   if (temp == NULL) {
     WARNING("powerdns plugin: realloc failed.");
-    return (-1);
+    return -1;
   }
   li->fields = temp;
 
@@ -787,7 +768,7 @@ static int powerdns_config_add_collect(list_item_t *li, /* {{{ */
   /* Invalidate a previously computed command */
   sfree(li->command);
 
-  return (0);
+  return 0;
 } /* }}} int powerdns_config_add_collect */
 
 static int powerdns_config_add_server(oconfig_item_t *ci) /* {{{ */
@@ -800,20 +781,20 @@ static int powerdns_config_add_server(oconfig_item_t *ci) /* {{{ */
   if ((ci->values_num != 1) || (ci->values[0].type != OCONFIG_TYPE_STRING)) {
     WARNING("powerdns plugin: `%s' needs exactly one string argument.",
             ci->key);
-    return (-1);
+    return -1;
   }
 
   item = calloc(1, sizeof(*item));
   if (item == NULL) {
     ERROR("powerdns plugin: calloc failed.");
-    return (-1);
+    return -1;
   }
 
   item->instance = strdup(ci->values[0].value.string);
   if (item->instance == NULL) {
     ERROR("powerdns plugin: strdup failed.");
     sfree(item);
-    return (-1);
+    return -1;
   }
 
   /*
@@ -832,7 +813,7 @@ static int powerdns_config_add_server(oconfig_item_t *ci) /* {{{ */
   } else {
     /* We must never get here.. */
     assert(0);
-    return (-1);
+    return -1;
   }
 
   status = 0;
@@ -879,13 +860,13 @@ static int powerdns_config_add_server(oconfig_item_t *ci) /* {{{ */
   if (status != 0) {
     sfree(socket_temp);
     sfree(item);
-    return (-1);
+    return -1;
   }
 
   DEBUG("powerdns plugin: Add server: instance = %s;", item->instance);
 
   sfree(socket_temp);
-  return (0);
+  return 0;
 } /* }}} int powerdns_config_add_server */
 
 static int powerdns_config(oconfig_item_t *ci) /* {{{ */
@@ -897,7 +878,7 @@ static int powerdns_config(oconfig_item_t *ci) /* {{{ */
 
     if (list == NULL) {
       ERROR("powerdns plugin: `llist_create' failed.");
-      return (-1);
+      return -1;
     }
   }
 
@@ -915,7 +896,7 @@ static int powerdns_config(oconfig_item_t *ci) /* {{{ */
       } else {
         char *temp = strdup(option->values[0].value.string);
         if (temp == NULL)
-          return (1);
+          return 1;
         sfree(local_sockpath);
         local_sockpath = temp;
       }
@@ -924,7 +905,7 @@ static int powerdns_config(oconfig_item_t *ci) /* {{{ */
     }
   } /* for (i = 0; i < ci->children_num; i++) */
 
-  return (0);
+  return 0;
 } /* }}} int powerdns_config */
 
 static int powerdns_read(void) {
@@ -933,12 +914,12 @@ static int powerdns_read(void) {
     item->func(item);
   }
 
-  return (0);
+  return 0;
 } /* static int powerdns_read */
 
 static int powerdns_shutdown(void) {
   if (list == NULL)
-    return (0);
+    return 0;
 
   for (llentry_t *e = llist_head(list); e != NULL; e = e->next) {
     list_item_t *item = (list_item_t *)e->value;
@@ -952,7 +933,7 @@ static int powerdns_shutdown(void) {
   llist_destroy(list);
   list = NULL;
 
-  return (0);
+  return 0;
 } /* static int powerdns_shutdown */
 
 void module_register(void) {
@@ -960,5 +941,3 @@ void module_register(void) {
   plugin_register_read("powerdns", powerdns_read);
   plugin_register_shutdown("powerdns", powerdns_shutdown);
 } /* void module_register */
-
-/* vim: set sw=2 sts=2 ts=8 fdm=marker : */

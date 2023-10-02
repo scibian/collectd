@@ -25,6 +25,7 @@
 #include "config.h"
 #endif
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -65,7 +66,7 @@
 #endif
 #endif /* NAN_ZERO_ZERO */
 
-#include "libcollectdclient/collectd/client.h"
+#include "collectd/client.h"
 
 #ifndef PREFIX
 #define PREFIX "/opt/" PACKAGE_NAME
@@ -79,6 +80,22 @@
 
 extern char *optarg;
 extern int optind;
+
+/* ssnprintf returns zero on success, one if truncation occurred
+   and a negative integer onerror. */
+static int _ssnprintf(char *str, size_t sz, const char *format, ...) {
+  va_list ap;
+  va_start(ap, format);
+
+  int ret = vsnprintf(str, sz, format, ap);
+
+  va_end(ap);
+
+  if (ret < 0) {
+    return ret;
+  }
+  return (size_t)ret >= sz;
+} /* int _ssnprintf */
 
 __attribute__((noreturn)) static void exit_usage(const char *name, int status) {
   fprintf(
@@ -138,12 +155,12 @@ static int array_grow(void **array, size_t *array_len, size_t elem_size) {
   tmp = realloc(*array, (*array_len + 1) * elem_size);
   if (tmp == NULL) {
     fprintf(stderr, "ERROR: Failed to allocate memory.\n");
-    return (-1);
+    return -1;
   }
 
   *array = tmp;
   ++(*array_len);
-  return (0);
+  return 0;
 } /* array_grow */
 
 static int parse_identifier(lcc_connection_t *c, const char *value,
@@ -162,11 +179,11 @@ static int parse_identifier(lcc_connection_t *c, const char *value,
     if (gethostname(hostname, sizeof(hostname)) != 0) {
       fprintf(stderr, "ERROR: Failed to get local hostname: %s",
               strerror(errno));
-      return (-1);
+      return -1;
     }
     hostname[sizeof(hostname) - 1] = '\0';
 
-    snprintf(ident_str, sizeof(ident_str), "%s/%s", hostname, value);
+    _ssnprintf(ident_str, sizeof(ident_str), "%s/%s", hostname, value);
     ident_str[sizeof(ident_str) - 1] = '\0';
   } else {
     strncpy(ident_str, value, sizeof(ident_str));
@@ -177,9 +194,9 @@ static int parse_identifier(lcc_connection_t *c, const char *value,
   if (status != 0) {
     fprintf(stderr, "ERROR: Failed to parse identifier ``%s'': %s.\n",
             ident_str, lcc_strerror(c));
-    return (-1);
+    return -1;
   }
-  return (0);
+  return 0;
 } /* parse_identifier */
 
 static int getval(lcc_connection_t *c, int argc, char **argv) {
@@ -195,12 +212,12 @@ static int getval(lcc_connection_t *c, int argc, char **argv) {
 
   if (argc != 2) {
     fprintf(stderr, "ERROR: getval: Missing identifier.\n");
-    return (-1);
+    return -1;
   }
 
   status = parse_identifier(c, argv[1], &ident);
   if (status != 0)
-    return (status);
+    return status;
 
 #define BAIL_OUT(s)                                                            \
   do {                                                                         \
@@ -212,7 +229,7 @@ static int getval(lcc_connection_t *c, int argc, char **argv) {
       free(ret_values_names);                                                  \
     }                                                                          \
     ret_values_num = 0;                                                        \
-    return (s);                                                                \
+    return s;                                                                  \
   } while (0)
 
   status =
@@ -249,7 +266,7 @@ static int flush(lcc_connection_t *c, int argc, char **argv) {
     if (plugins != NULL)                                                       \
       free(plugins);                                                           \
     plugins_num = 0;                                                           \
-    return (s);                                                                \
+    return s;                                                                  \
   } while (0)
 
   for (int i = 1; i < argc; ++i) {
@@ -276,8 +293,9 @@ static int flush(lcc_connection_t *c, int argc, char **argv) {
                 value);
         BAIL_OUT(-1);
       } else if ((endptr != NULL) && (*endptr != '\0')) {
-        fprintf(stderr, "WARNING: Ignoring trailing garbage after timeout: "
-                        "%s.\n",
+        fprintf(stderr,
+                "WARNING: Ignoring trailing garbage after timeout: "
+                "%s.\n",
                 endptr);
       }
     } else if (strcasecmp(key, "plugin") == 0) {
@@ -324,8 +342,9 @@ static int flush(lcc_connection_t *c, int argc, char **argv) {
           char id[1024];
 
           lcc_identifier_to_string(c, id, sizeof(id), identifiers + j);
-          fprintf(stderr, "ERROR: Failed to flush plugin `%s', "
-                          "identifier `%s': %s.\n",
+          fprintf(stderr,
+                  "ERROR: Failed to flush plugin `%s', "
+                  "identifier `%s': %s.\n",
                   (plugins[i] == NULL) ? "(all)" : plugins[i], id,
                   lcc_strerror(c));
         }
@@ -347,7 +366,7 @@ static int listval(lcc_connection_t *c, int argc, char **argv) {
 
   if (argc != 1) {
     fprintf(stderr, "ERROR: listval: Does not accept any arguments.\n");
-    return (-1);
+    return -1;
   }
 
 #define BAIL_OUT(s)                                                            \
@@ -355,7 +374,7 @@ static int listval(lcc_connection_t *c, int argc, char **argv) {
     if (ret_ident != NULL)                                                     \
       free(ret_ident);                                                         \
     ret_ident_num = 0;                                                         \
-    return (s);                                                                \
+    return s;                                                                  \
   } while (0)
 
   status = lcc_listval(c, &ret_ident, &ret_ident_num);
@@ -369,8 +388,9 @@ static int listval(lcc_connection_t *c, int argc, char **argv) {
 
     status = lcc_identifier_to_string(c, id, sizeof(id), ret_ident + i);
     if (status != 0) {
-      fprintf(stderr, "ERROR: listval: Failed to convert returned "
-                      "identifier to a string: %s\n",
+      fprintf(stderr,
+              "ERROR: listval: Failed to convert returned "
+              "identifier to a string: %s\n",
               lcc_strerror(c));
       continue;
     }
@@ -396,7 +416,7 @@ static int putval(lcc_connection_t *c, int argc, char **argv) {
   if (argc < 3) {
     fprintf(stderr, "ERROR: putval: Missing identifier "
                     "and/or value list.\n");
-    return (-1);
+    return -1;
   }
 
   vl.values = values;
@@ -404,7 +424,7 @@ static int putval(lcc_connection_t *c, int argc, char **argv) {
 
   status = parse_identifier(c, argv[1], &vl.identifier);
   if (status != 0)
-    return (status);
+    return status;
 
   for (int i = 2; i < argc; ++i) {
     char *tmp;
@@ -426,15 +446,16 @@ static int putval(lcc_connection_t *c, int argc, char **argv) {
         if (endptr == value) {
           fprintf(stderr, "ERROR: Failed to parse interval as number: %s.\n",
                   value);
-          return (-1);
+          return -1;
         } else if ((endptr != NULL) && (*endptr != '\0')) {
-          fprintf(stderr, "WARNING: Ignoring trailing garbage after "
-                          "interval: %s.\n",
+          fprintf(stderr,
+                  "WARNING: Ignoring trailing garbage after "
+                  "interval: %s.\n",
                   endptr);
         }
       } else {
         fprintf(stderr, "ERROR: putval: Unknown option `%s'.\n", key);
-        return (-1);
+        return -1;
       }
     } else { /* value list */
       char *value;
@@ -443,7 +464,7 @@ static int putval(lcc_connection_t *c, int argc, char **argv) {
 
       if (tmp == NULL) {
         fprintf(stderr, "ERROR: putval: Invalid value list: %s.\n", argv[i]);
-        return (-1);
+        return -1;
       }
 
       *tmp = '\0';
@@ -459,10 +480,10 @@ static int putval(lcc_connection_t *c, int argc, char **argv) {
         if (endptr == argv[i]) {
           fprintf(stderr, "ERROR: Failed to parse time as number: %s.\n",
                   argv[i]);
-          return (-1);
+          return -1;
         } else if ((endptr != NULL) && (*endptr != '\0')) {
           fprintf(stderr, "ERROR: Garbage after time: %s.\n", endptr);
-          return (-1);
+          return -1;
         }
       }
 
@@ -499,10 +520,10 @@ static int putval(lcc_connection_t *c, int argc, char **argv) {
         if (endptr == value) {
           fprintf(stderr, "ERROR: Failed to parse value as number: %s.\n",
                   argv[i]);
-          return (-1);
+          return -1;
         } else if ((endptr != NULL) && (*endptr != '\0')) {
           fprintf(stderr, "ERROR: Garbage after value: %s.\n", endptr);
-          return (-1);
+          return -1;
         }
 
         value = tmp;
@@ -514,16 +535,16 @@ static int putval(lcc_connection_t *c, int argc, char **argv) {
       status = lcc_putval(c, &vl);
       if (status != 0) {
         fprintf(stderr, "ERROR: %s\n", lcc_strerror(c));
-        return (-1);
+        return -1;
       }
     }
   }
 
   if (values_len == 0) {
     fprintf(stderr, "ERROR: putval: Missing value list(s).\n");
-    return (-1);
+    return -1;
   }
-  return (0);
+  return 0;
 } /* putval */
 
 int main(int argc, char **argv) {
@@ -543,7 +564,7 @@ int main(int argc, char **argv) {
 
     switch (opt) {
     case 's':
-      snprintf(address, sizeof(address), "unix:%s", optarg);
+      _ssnprintf(address, sizeof(address), "unix:%s", optarg);
       address[sizeof(address) - 1] = '\0';
       break;
     case 'h':
@@ -563,7 +584,7 @@ int main(int argc, char **argv) {
   if (status != 0) {
     fprintf(stderr, "ERROR: Failed to connect to daemon at %s: %s.\n", address,
             strerror(errno));
-    return (1);
+    return 1;
   }
 
   if (strcasecmp(argv[optind], "getval") == 0)
@@ -576,14 +597,12 @@ int main(int argc, char **argv) {
     status = putval(c, argc - optind, argv + optind);
   else {
     fprintf(stderr, "%s: invalid command: %s\n", argv[0], argv[optind]);
-    return (1);
+    return 1;
   }
 
   LCC_DESTROY(c);
 
   if (status != 0)
-    return (status);
-  return (0);
+    return status;
+  return 0;
 } /* main */
-
-/* vim: set sw=2 ts=2 tw=78 expandtab : */
