@@ -1,3 +1,10 @@
+collectd (5.9.2-1sci9u1) UNRELEASED; urgency=medium
+
+  * New upstream release 5.9.2
+  * Compiled against python3
+
+ -- Mathieu Chouquet-Stringer <mathieu-externe.chouquet-stringer@edf.fr>  Mon, 02 Oct 2023 17:58:31 +0200
+
 collectd (5.7.1-1.1sci9u11) scibian9; urgency=medium
 
   * Rebuild for slurm 23.02

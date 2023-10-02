@@ -13,6 +13,7 @@ DEB_BUILD_ARCH      ?= $(shell dpkg-architecture -qDEB_BUILD_ARCH)
 DEB_BUILD_GNU_TYPE  ?= $(shell dpkg-architecture -qDEB_BUILD_GNU_TYPE)
 
 export DEB_BUILD_MAINT_OPTIONS=hardening=+all
+export PYTHON_CONFIG=/usr/bin/python3-config
 
 CPPFLAGS = $(shell dpkg-buildflags --get CPPFLAGS)
 CPPFLAGS += -I$(CURDIR)/debian/include
