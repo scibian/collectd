@@ -29,8 +29,8 @@
 
 #include <inttypes.h>
 
-static int fail_count__ = 0;
-static int check_count__ = 0;
+static int fail_count__;
+static int check_count__;
 
 #ifndef DBL_PRECISION
 #define DBL_PRECISION 1e-12
@@ -56,7 +56,7 @@ static int check_count__ = 0;
 
 #define OK1(cond, text)                                                        \
   do {                                                                         \
-    _Bool result = (cond);                                                     \
+    bool result = (cond);                                                      \
     LOG(result, text);                                                         \
     if (!result) {                                                             \
       return -1;                                                               \
@@ -71,7 +71,7 @@ static int check_count__ = 0;
     if (strcmp(expect, got__) != 0) {                                          \
       printf("not ok %i - %s = \"%s\", want \"%s\"\n", ++check_count__,        \
              #actual, got__, expect);                                          \
-      return (-1);                                                             \
+      return -1;                                                               \
     }                                                                          \
     printf("ok %i - %s = \"%s\"\n", ++check_count__, #actual, got__);          \
   } while (0)
@@ -83,7 +83,7 @@ static int check_count__ = 0;
     if (got__ != want__) {                                                     \
       printf("not ok %i - %s = %d, want %d\n", ++check_count__, #actual,       \
              got__, want__);                                                   \
-      return (-1);                                                             \
+      return -1;                                                               \
     }                                                                          \
     printf("ok %i - %s = %d\n", ++check_count__, #actual, got__);              \
   } while (0)
@@ -95,24 +95,37 @@ static int check_count__ = 0;
     if (got__ != want__) {                                                     \
       printf("not ok %i - %s = %" PRIu64 ", want %" PRIu64 "\n",               \
              ++check_count__, #actual, got__, want__);                         \
-      return (-1);                                                             \
+      return -1;                                                               \
     }                                                                          \
     printf("ok %i - %s = %" PRIu64 "\n", ++check_count__, #actual, got__);     \
+  } while (0)
+
+#define EXPECT_EQ_PTR(expect, actual)                                          \
+  do {                                                                         \
+    void *want__ = expect;                                                     \
+    void *got__ = actual;                                                      \
+    if (got__ != want__) {                                                     \
+      printf("not ok %i - %s = %p, want %p\n", ++check_count__, #actual,       \
+             got__, want__);                                                   \
+      return -1;                                                               \
+    }                                                                          \
+    printf("ok %i - %s = %p\n", ++check_count__, #actual, got__);              \
   } while (0)
 
 #define EXPECT_EQ_DOUBLE(expect, actual)                                       \
   do {                                                                         \
     double want__ = (double)expect;                                            \
     double got__ = (double)actual;                                             \
-    if (isnan(want__) && !isnan(got__)) {                                      \
+    if ((isnan(want__) && !isnan(got__)) ||                                    \
+        (!isnan(want__) && isnan(got__))) {                                    \
       printf("not ok %i - %s = %.15g, want %.15g\n", ++check_count__, #actual, \
              got__, want__);                                                   \
-      return (-1);                                                             \
+      return -1;                                                               \
     } else if (!isnan(want__) && (((want__ - got__) < -DBL_PRECISION) ||       \
                                   ((want__ - got__) > DBL_PRECISION))) {       \
       printf("not ok %i - %s = %.15g, want %.15g\n", ++check_count__, #actual, \
              got__, want__);                                                   \
-      return (-1);                                                             \
+      return -1;                                                               \
     }                                                                          \
     printf("ok %i - %s = %.15g\n", ++check_count__, #actual, got__);           \
   } while (0)

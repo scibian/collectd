@@ -26,9 +26,9 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
-#include "utils_ignorelist.h"
+#include "utils/common/common.h"
+#include "utils/ignorelist/ignorelist.h"
 
 #if !KERNEL_LINUX
 #error "No applicable input method."
@@ -41,11 +41,12 @@
  * Global variables
  */
 static const char *config_keys[] = {
-    "Value", "IgnoreSelected",
+    "Value",
+    "IgnoreSelected",
 };
 static int config_keys_num = STATIC_ARRAY_SIZE(config_keys);
 
-static ignorelist_t *values_list = NULL;
+static ignorelist_t *values_list;
 
 /*
  * Functions
@@ -58,7 +59,6 @@ static void submit(const char *protocol_name, const char *str_key,
 
   status = parse_value(str_value, &value, DS_TYPE_DERIVE);
   if (status != 0) {
-    ERROR("protocols plugin: Parsing string as integer failed: %s", str_value);
     return;
   }
 
@@ -87,9 +87,8 @@ static int read_file(const char *path) {
 
   fh = fopen(path, "r");
   if (fh == NULL) {
-    ERROR("protocols plugin: fopen (%s) failed: %s.", path,
-          sstrerror(errno, key_buffer, sizeof(key_buffer)));
-    return (-1);
+    ERROR("protocols plugin: fopen (%s) failed: %s.", path, STRERRNO);
+    return -1;
   }
 
   status = -1;
@@ -169,7 +168,7 @@ static int read_file(const char *path) {
 
   fclose(fh);
 
-  return (status);
+  return status;
 } /* int read_file */
 
 static int protocols_read(void) {
@@ -185,9 +184,9 @@ static int protocols_read(void) {
     success++;
 
   if (success == 0)
-    return (-1);
+    return -1;
 
-  return (0);
+  return 0;
 } /* int protocols_read */
 
 static int protocols_config(const char *key, const char *value) {
@@ -202,10 +201,10 @@ static int protocols_config(const char *key, const char *value) {
       invert = 0;
     ignorelist_set_invert(values_list, invert);
   } else {
-    return (-1);
+    return -1;
   }
 
-  return (0);
+  return 0;
 } /* int protocols_config */
 
 void module_register(void) {
@@ -213,5 +212,3 @@ void module_register(void) {
                          config_keys_num);
   plugin_register_read("protocols", protocols_read);
 } /* void module_register */
-
-/* vim: set sw=2 sts=2 et : */

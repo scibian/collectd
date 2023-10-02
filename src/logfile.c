@@ -28,10 +28,8 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
-
-#define DEFAULT_LOGFILE LOCALSTATEDIR "/log/collectd.log"
+#include "utils/common/common.h"
 
 #if COLLECT_DEBUG
 static int log_level = LOG_DEBUG;
@@ -41,9 +39,9 @@ static int log_level = LOG_INFO;
 
 static pthread_mutex_t file_lock = PTHREAD_MUTEX_INITIALIZER;
 
-static char *log_file = NULL;
+static char *log_file;
 static int print_timestamp = 1;
-static int print_severity = 0;
+static int print_severity;
 
 static const char *config_keys[] = {"LogLevel", "File", "Timestamp",
                                     "PrintSeverity"};
@@ -54,8 +52,8 @@ static int logfile_config(const char *key, const char *value) {
     log_level = parse_log_severity(value);
     if (log_level < 0) {
       log_level = LOG_INFO;
-      ERROR("logfile: invalid loglevel [%s] defaulting to 'info'", value);
-      return (1);
+      WARNING("logfile: invalid loglevel [%s] defaulting to 'info'", value);
+      return 0;
     }
   } else if (0 == strcasecmp(key, "File")) {
     sfree(log_file);
@@ -79,7 +77,7 @@ static int logfile_config(const char *key, const char *value) {
 static void logfile_print(const char *msg, int severity,
                           cdtime_t timestamp_time) {
   FILE *fh;
-  _Bool do_close = 0;
+  bool do_close = false;
   char timestamp_str[64];
   char level_str[16] = "";
 
@@ -117,22 +115,19 @@ static void logfile_print(const char *msg, int severity,
   pthread_mutex_lock(&file_lock);
 
   if (log_file == NULL) {
-    fh = fopen(DEFAULT_LOGFILE, "a");
-    do_close = 1;
+    fh = stderr;
   } else if (strcasecmp(log_file, "stderr") == 0)
     fh = stderr;
   else if (strcasecmp(log_file, "stdout") == 0)
     fh = stdout;
   else {
     fh = fopen(log_file, "a");
-    do_close = 1;
+    do_close = true;
   }
 
   if (fh == NULL) {
-    char errbuf[1024];
-    fprintf(stderr, "logfile plugin: fopen (%s) failed: %s\n",
-            (log_file == NULL) ? DEFAULT_LOGFILE : log_file,
-            sstrerror(errno, errbuf, sizeof(errbuf)));
+    fprintf(stderr, "logfile plugin: fopen (%s) failed: %s\n", log_file,
+            STRERRNO);
   } else {
     if (print_timestamp)
       fprintf(fh, "[%s] %s%s\n", timestamp_str, level_str, msg);
@@ -167,7 +162,7 @@ static int logfile_notification(const notification_t *n,
   int buf_len = sizeof(buf);
   int status;
 
-  status = ssnprintf(
+  status = snprintf(
       buf_ptr, buf_len, "Notification: severity = %s",
       (n->severity == NOTIF_FAILURE)
           ? "FAILURE"
@@ -181,7 +176,7 @@ static int logfile_notification(const notification_t *n,
 
 #define APPEND(bufptr, buflen, key, value)                                     \
   if ((buflen > 0) && (strlen(value) > 0)) {                                   \
-    status = ssnprintf(bufptr, buflen, ", %s = %s", key, value);               \
+    status = snprintf(bufptr, buflen, ", %s = %s", key, value);                \
     if (status > 0) {                                                          \
       bufptr += status;                                                        \
       buflen -= status;                                                        \
@@ -198,7 +193,7 @@ static int logfile_notification(const notification_t *n,
 
   logfile_print(buf, LOG_INFO, (n->time != 0) ? n->time : cdtime());
 
-  return (0);
+  return 0;
 } /* int logfile_notification */
 
 void module_register(void) {
@@ -208,5 +203,3 @@ void module_register(void) {
   plugin_register_notification("logfile", logfile_notification,
                                /* user_data = */ NULL);
 } /* void module_register (void) */
-
-/* vim: set sw=4 ts=4 tw=78 noexpandtab : */

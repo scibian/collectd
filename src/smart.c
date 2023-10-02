@@ -26,27 +26,31 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
-#include "utils_ignorelist.h"
+#include "utils/common/common.h"
+#include "utils/ignorelist/ignorelist.h"
 
 #include <atasmart.h>
 #include <libudev.h>
+
+#ifdef HAVE_SYS_CAPABILITY_H
+#include <sys/capability.h>
+#endif
 
 static const char *config_keys[] = {"Disk", "IgnoreSelected", "IgnoreSleepMode",
                                     "UseSerial"};
 
 static int config_keys_num = STATIC_ARRAY_SIZE(config_keys);
 
-static ignorelist_t *ignorelist = NULL;
-static int ignore_sleep_mode = 0;
-static int use_serial = 0;
+static ignorelist_t *ignorelist;
+static int ignore_sleep_mode;
+static int use_serial;
 
 static int smart_config(const char *key, const char *value) {
   if (ignorelist == NULL)
     ignorelist = ignorelist_create(/* invert = */ 1);
   if (ignorelist == NULL)
-    return (1);
+    return 1;
 
   if (strcasecmp("Disk", key) == 0) {
     ignorelist_add(ignorelist, value);
@@ -62,10 +66,10 @@ static int smart_config(const char *key, const char *value) {
     if (IS_TRUE(value))
       use_serial = 1;
   } else {
-    return (-1);
+    return -1;
   }
 
-  return (0);
+  return 0;
 } /* int smart_config */
 
 static void smart_submit(const char *dev, const char *type,
@@ -213,7 +217,7 @@ static int smart_read(void) {
   handle_udev = udev_new();
   if (!handle_udev) {
     ERROR("smart plugin: unable to initialize udev.");
-    return (-1);
+    return -1;
   }
   enumerate = udev_enumerate_new(handle_udev);
   udev_enumerate_add_match_subsystem(enumerate, "block");
@@ -235,10 +239,28 @@ static int smart_read(void) {
   udev_enumerate_unref(enumerate);
   udev_unref(handle_udev);
 
-  return (0);
+  return 0;
 } /* int smart_read */
+
+static int smart_init(void) {
+#if defined(HAVE_SYS_CAPABILITY_H) && defined(CAP_SYS_RAWIO)
+  if (check_capability(CAP_SYS_RAWIO) != 0) {
+    if (getuid() == 0)
+      WARNING("smart plugin: Running collectd as root, but the "
+              "CAP_SYS_RAWIO capability is missing. The plugin's read "
+              "function will probably fail. Is your init system dropping "
+              "capabilities?");
+    else
+      WARNING("smart plugin: collectd doesn't have the CAP_SYS_RAWIO "
+              "capability. If you don't want to run collectd as root, try "
+              "running \"setcap cap_sys_rawio=ep\" on the collectd binary.");
+  }
+#endif
+  return 0;
+} /* int smart_init */
 
 void module_register(void) {
   plugin_register_config("smart", smart_config, config_keys, config_keys_num);
+  plugin_register_init("smart", smart_init);
   plugin_register_read("smart", smart_read);
 } /* void module_register */

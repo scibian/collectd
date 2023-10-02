@@ -30,7 +30,7 @@
 
 #include "collectd.h"
 
-#include "common.h"
+#include "utils/common/common.h"
 #include "utils_subst.h"
 
 char *subst(char *buf, size_t buflen, const char *string, size_t off1,
@@ -90,28 +90,6 @@ char *subst(char *buf, size_t buflen, const char *string, size_t off1,
   return buf;
 } /* subst */
 
-char *asubst(const char *string, int off1, int off2, const char *replacement) {
-  char *buf;
-  int len;
-
-  char *ret;
-
-  if ((NULL == string) || (0 > off1) || (0 > off2) || (off1 > off2) ||
-      (NULL == replacement))
-    return NULL;
-
-  len = off1 + strlen(replacement) + strlen(string) - off2 + 1;
-
-  buf = malloc(len);
-  if (NULL == buf)
-    return NULL;
-
-  ret = subst(buf, len, string, off1, off2, replacement);
-  if (NULL == ret)
-    free(buf);
-  return ret;
-} /* asubst */
-
 char *subst_string(char *buf, size_t buflen, const char *string,
                    const char *needle, const char *replacement) {
   size_t needle_len;
@@ -119,7 +97,7 @@ char *subst_string(char *buf, size_t buflen, const char *string,
 
   if ((buf == NULL) || (string == NULL) || (needle == NULL) ||
       (replacement == NULL))
-    return (NULL);
+    return NULL;
 
   needle_len = strlen(needle);
   sstrncpy(buf, string, buflen);
@@ -152,12 +130,10 @@ char *subst_string(char *buf, size_t buflen, const char *string,
   }
 
   if (i >= buflen) {
-    WARNING("subst_string: Loop exited after %zu iterations: "
+    WARNING("subst_string: Loop exited after %" PRIsz " iterations: "
             "string = %s; needle = %s; replacement = %s;",
             i, string, needle, replacement);
   }
 
-  return (buf);
+  return buf;
 } /* char *subst_string */
-
-/* vim: set sw=4 ts=4 tw=78 noexpandtab : */

@@ -1,8 +1,8 @@
-/* A Bison parser, made by GNU Bison 3.0.2.  */
+/* A Bison parser, made by GNU Bison 3.0.5.  */
 
 /* Bison implementation for Yacc-like parsers in C
 
-   Copyright (C) 1984, 1989-1990, 2000-2013 Free Software Foundation, Inc.
+   Copyright (C) 1984, 1989-1990, 2000-2015, 2018 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -44,7 +44,7 @@
 #define YYBISON 1
 
 /* Bison version.  */
-#define YYBISON_VERSION "3.0.2"
+#define YYBISON_VERSION "3.0.5"
 
 /* Skeleton name.  */
 #define YYSKELETON_NAME "yacc.c"
@@ -62,7 +62,7 @@
 
 
 /* Copy the first part of user declarations.  */
-#line 27 "parser.y" /* yacc.c:339  */
+#line 27 "src/liboconfig/parser.y" /* yacc.c:339  */
 
 #include <stdlib.h>
 #include <string.h>
@@ -70,7 +70,7 @@
 #include "aux_types.h"
 
 static char *unquote (const char *orig);
-static int yyerror (const char *s);
+static void yyerror(const char *s);
 
 /* Lexer variables */
 extern int yylineno;
@@ -80,7 +80,7 @@ extern int yylex (void);
 extern oconfig_item_t *ci_root;
 extern char           *c_file;
 
-#line 84 "parser.c" /* yacc.c:339  */
+#line 84 "src/liboconfig/parser.c" /* yacc.c:339  */
 
 # ifndef YY_NULLPTR
 #  if defined __cplusplus && 201103L <= __cplusplus
@@ -100,8 +100,8 @@ extern char           *c_file;
 
 /* In a future release of Bison, this section will be replaced
    by #include "y.tab.h".  */
-#ifndef YY_YY_PARSER_H_INCLUDED
-# define YY_YY_PARSER_H_INCLUDED
+#ifndef YY_YY_SRC_LIBOCONFIG_PARSER_H_INCLUDED
+# define YY_YY_SRC_LIBOCONFIG_PARSER_H_INCLUDED
 /* Debug traces.  */
 #ifndef YYDEBUG
 # define YYDEBUG 0
@@ -139,10 +139,10 @@ extern int yydebug;
 
 /* Value type.  */
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
-typedef union YYSTYPE YYSTYPE;
+
 union YYSTYPE
 {
-#line 47 "parser.y" /* yacc.c:355  */
+#line 47 "src/liboconfig/parser.y" /* yacc.c:355  */
 
 	double  number;
 	int     boolean;
@@ -152,8 +152,10 @@ union YYSTYPE
 	argument_list_t  al;
 	statement_list_t sl;
 
-#line 156 "parser.c" /* yacc.c:355  */
+#line 156 "src/liboconfig/parser.c" /* yacc.c:355  */
 };
+
+typedef union YYSTYPE YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define YYSTYPE_IS_DECLARED 1
 #endif
@@ -163,11 +165,11 @@ extern YYSTYPE yylval;
 
 int yyparse (void);
 
-#endif /* !YY_YY_PARSER_H_INCLUDED  */
+#endif /* !YY_YY_SRC_LIBOCONFIG_PARSER_H_INCLUDED  */
 
 /* Copy the second part of user declarations.  */
 
-#line 171 "parser.c" /* yacc.c:358  */
+#line 173 "src/liboconfig/parser.c" /* yacc.c:358  */
 
 #ifdef short
 # undef short
@@ -465,9 +467,9 @@ static const yytype_uint8 yytranslate[] =
   /* YYRLINE[YYN] -- Source line where rule number YYN was defined.  */
 static const yytype_uint8 yyrline[] =
 {
-       0,    82,    82,    83,    87,    88,    89,    90,    94,   101,
-     110,   114,   124,   130,   140,   147,   160,   176,   177,   178,
-     182,   192,   209,   216
+       0,    82,    82,    83,    87,    88,    89,    90,    94,   107,
+     120,   124,   134,   140,   150,   157,   170,   186,   187,   188,
+     192,   208,   229,   240
 };
 #endif
 
@@ -944,6 +946,7 @@ yysyntax_error (YYSIZE_T *yymsg_alloc, char **yymsg,
       case N:                               \
         yyformat = S;                       \
       break
+    default: /* Avoid compiler warnings. */
       YYCASE_(0, YY_("syntax error"));
       YYCASE_(1, YY_("syntax error, unexpected %s"));
       YYCASE_(2, YY_("syntax error, unexpected %s, expecting %s"));
@@ -1260,179 +1263,199 @@ yyreduce:
   switch (yyn)
     {
         case 2:
-#line 82 "parser.y" /* yacc.c:1646  */
+#line 82 "src/liboconfig/parser.y" /* yacc.c:1648  */
     {(yyval.string) = unquote ((yyvsp[0].string));}
-#line 1266 "parser.c" /* yacc.c:1646  */
+#line 1269 "src/liboconfig/parser.c" /* yacc.c:1648  */
     break;
 
   case 3:
-#line 83 "parser.y" /* yacc.c:1646  */
+#line 83 "src/liboconfig/parser.y" /* yacc.c:1648  */
     {(yyval.string) = strdup ((yyvsp[0].string));}
-#line 1272 "parser.c" /* yacc.c:1646  */
+#line 1275 "src/liboconfig/parser.c" /* yacc.c:1648  */
     break;
 
   case 4:
-#line 87 "parser.y" /* yacc.c:1646  */
+#line 87 "src/liboconfig/parser.y" /* yacc.c:1648  */
     {(yyval.cv).value.number = (yyvsp[0].number); (yyval.cv).type = OCONFIG_TYPE_NUMBER;}
-#line 1278 "parser.c" /* yacc.c:1646  */
+#line 1281 "src/liboconfig/parser.c" /* yacc.c:1648  */
     break;
 
   case 5:
-#line 88 "parser.y" /* yacc.c:1646  */
+#line 88 "src/liboconfig/parser.y" /* yacc.c:1648  */
     {(yyval.cv).value.boolean = 1; (yyval.cv).type = OCONFIG_TYPE_BOOLEAN;}
-#line 1284 "parser.c" /* yacc.c:1646  */
+#line 1287 "src/liboconfig/parser.c" /* yacc.c:1648  */
     break;
 
   case 6:
-#line 89 "parser.y" /* yacc.c:1646  */
+#line 89 "src/liboconfig/parser.y" /* yacc.c:1648  */
     {(yyval.cv).value.boolean = 0; (yyval.cv).type = OCONFIG_TYPE_BOOLEAN;}
-#line 1290 "parser.c" /* yacc.c:1646  */
+#line 1293 "src/liboconfig/parser.c" /* yacc.c:1648  */
     break;
 
   case 7:
-#line 90 "parser.y" /* yacc.c:1646  */
+#line 90 "src/liboconfig/parser.y" /* yacc.c:1648  */
     {(yyval.cv).value.string = (yyvsp[0].string); (yyval.cv).type = OCONFIG_TYPE_STRING;}
-#line 1296 "parser.c" /* yacc.c:1646  */
+#line 1299 "src/liboconfig/parser.c" /* yacc.c:1648  */
     break;
 
   case 8:
-#line 95 "parser.y" /* yacc.c:1646  */
+#line 95 "src/liboconfig/parser.y" /* yacc.c:1648  */
     {
 	 (yyval.al) = (yyvsp[-1].al);
+	 oconfig_value_t *tmp = realloc((yyval.al).argument,
+	                                ((yyval.al).argument_num+1) * sizeof(*(yyval.al).argument));
+	 if (tmp == NULL) {
+	   yyerror("realloc failed");
+	   YYERROR;
+	 }
+	 (yyval.al).argument = tmp;
+	 (yyval.al).argument[(yyval.al).argument_num] = (yyvsp[0].cv);
 	 (yyval.al).argument_num++;
-	 (yyval.al).argument = realloc ((yyval.al).argument, (yyval.al).argument_num * sizeof (oconfig_value_t));
-	 (yyval.al).argument[(yyval.al).argument_num-1] = (yyvsp[0].cv);
 	}
-#line 1307 "parser.c" /* yacc.c:1646  */
+#line 1316 "src/liboconfig/parser.c" /* yacc.c:1648  */
     break;
 
   case 9:
-#line 102 "parser.y" /* yacc.c:1646  */
+#line 108 "src/liboconfig/parser.y" /* yacc.c:1648  */
     {
-	 (yyval.al).argument = malloc (sizeof (oconfig_value_t));
+	 (yyval.al).argument = calloc(1, sizeof(*(yyval.al).argument));
+	 if ((yyval.al).argument == NULL) {
+	   yyerror("calloc failed");
+	   YYERROR;
+	 }
 	 (yyval.al).argument[0] = (yyvsp[0].cv);
 	 (yyval.al).argument_num = 1;
 	}
-#line 1317 "parser.c" /* yacc.c:1646  */
+#line 1330 "src/liboconfig/parser.c" /* yacc.c:1648  */
     break;
 
   case 10:
-#line 110 "parser.y" /* yacc.c:1646  */
+#line 120 "src/liboconfig/parser.y" /* yacc.c:1648  */
     {(yyval.string) = strdup ((yyvsp[0].string));}
-#line 1323 "parser.c" /* yacc.c:1646  */
+#line 1336 "src/liboconfig/parser.c" /* yacc.c:1648  */
     break;
 
   case 11:
-#line 115 "parser.y" /* yacc.c:1646  */
+#line 125 "src/liboconfig/parser.y" /* yacc.c:1648  */
     {
-	 memset (&(yyval.ci), '\0', sizeof ((yyval.ci)));
+	 memset(&(yyval.ci), 0, sizeof((yyval.ci)));
 	 (yyval.ci).key = (yyvsp[-2].string);
 	 (yyval.ci).values = (yyvsp[-1].al).argument;
 	 (yyval.ci).values_num = (yyvsp[-1].al).argument_num;
 	}
-#line 1334 "parser.c" /* yacc.c:1646  */
+#line 1347 "src/liboconfig/parser.c" /* yacc.c:1648  */
     break;
 
   case 12:
-#line 125 "parser.y" /* yacc.c:1646  */
+#line 135 "src/liboconfig/parser.y" /* yacc.c:1648  */
     {
-	 memset (&(yyval.ci), '\0', sizeof ((yyval.ci)));
+	 memset(&(yyval.ci), 0, sizeof((yyval.ci)));
 	 (yyval.ci).key = (yyvsp[-2].string);
 	}
-#line 1343 "parser.c" /* yacc.c:1646  */
+#line 1356 "src/liboconfig/parser.c" /* yacc.c:1648  */
     break;
 
   case 13:
-#line 131 "parser.y" /* yacc.c:1646  */
+#line 141 "src/liboconfig/parser.y" /* yacc.c:1648  */
     {
-	 memset (&(yyval.ci), '\0', sizeof ((yyval.ci)));
+	 memset(&(yyval.ci), 0, sizeof((yyval.ci)));
 	 (yyval.ci).key = (yyvsp[-3].string);
 	 (yyval.ci).values = (yyvsp[-2].al).argument;
 	 (yyval.ci).values_num = (yyvsp[-2].al).argument_num;
 	}
-#line 1354 "parser.c" /* yacc.c:1646  */
+#line 1367 "src/liboconfig/parser.c" /* yacc.c:1648  */
     break;
 
   case 14:
-#line 141 "parser.y" /* yacc.c:1646  */
+#line 151 "src/liboconfig/parser.y" /* yacc.c:1648  */
     {
 	 (yyval.string) = (yyvsp[-2].string);
 	}
-#line 1362 "parser.c" /* yacc.c:1646  */
+#line 1375 "src/liboconfig/parser.c" /* yacc.c:1648  */
     break;
 
   case 15:
-#line 148 "parser.y" /* yacc.c:1646  */
+#line 158 "src/liboconfig/parser.y" /* yacc.c:1648  */
     {
-	 if (strcmp ((yyvsp[-2].ci).key, (yyvsp[0].string)) != 0)
+	 if (strcmp((yyvsp[-2].ci).key, (yyvsp[0].string)) != 0)
 	 {
-		printf ("block_begin = %s; block_end = %s;\n", (yyvsp[-2].ci).key, (yyvsp[0].string));
-	 	yyerror ("Block not closed..\n");
-		exit (1);
+		printf("block_begin = %s; block_end = %s;\n", (yyvsp[-2].ci).key, (yyvsp[0].string));
+		yyerror("block not closed");
+		YYERROR;
 	 }
 	 free ((yyvsp[0].string)); (yyvsp[0].string) = NULL;
 	 (yyval.ci) = (yyvsp[-2].ci);
 	 (yyval.ci).children = (yyvsp[-1].sl).statement;
 	 (yyval.ci).children_num = (yyvsp[-1].sl).statement_num;
 	}
-#line 1379 "parser.c" /* yacc.c:1646  */
+#line 1392 "src/liboconfig/parser.c" /* yacc.c:1648  */
     break;
 
   case 16:
-#line 161 "parser.y" /* yacc.c:1646  */
+#line 171 "src/liboconfig/parser.y" /* yacc.c:1648  */
     {
-	 if (strcmp ((yyvsp[-1].ci).key, (yyvsp[0].string)) != 0)
+	 if (strcmp((yyvsp[-1].ci).key, (yyvsp[0].string)) != 0)
 	 {
-		printf ("block_begin = %s; block_end = %s;\n", (yyvsp[-1].ci).key, (yyvsp[0].string));
-		yyerror ("Block not closed..\n");
-		exit (1);
+		printf("block_begin = %s; block_end = %s;\n", (yyvsp[-1].ci).key, (yyvsp[0].string));
+		yyerror("block not closed");
+		YYERROR;
 	 }
 	 free ((yyvsp[0].string)); (yyvsp[0].string) = NULL;
 	 (yyval.ci) = (yyvsp[-1].ci);
 	 (yyval.ci).children = NULL;
 	 (yyval.ci).children_num = 0;
 	}
-#line 1396 "parser.c" /* yacc.c:1646  */
+#line 1409 "src/liboconfig/parser.c" /* yacc.c:1648  */
     break;
 
   case 17:
-#line 176 "parser.y" /* yacc.c:1646  */
+#line 186 "src/liboconfig/parser.y" /* yacc.c:1648  */
     {(yyval.ci) = (yyvsp[0].ci);}
-#line 1402 "parser.c" /* yacc.c:1646  */
+#line 1415 "src/liboconfig/parser.c" /* yacc.c:1648  */
     break;
 
   case 18:
-#line 177 "parser.y" /* yacc.c:1646  */
+#line 187 "src/liboconfig/parser.y" /* yacc.c:1648  */
     {(yyval.ci) = (yyvsp[0].ci);}
-#line 1408 "parser.c" /* yacc.c:1646  */
+#line 1421 "src/liboconfig/parser.c" /* yacc.c:1648  */
     break;
 
   case 19:
-#line 178 "parser.y" /* yacc.c:1646  */
+#line 188 "src/liboconfig/parser.y" /* yacc.c:1648  */
     {(yyval.ci).values_num = 0;}
-#line 1414 "parser.c" /* yacc.c:1646  */
+#line 1427 "src/liboconfig/parser.c" /* yacc.c:1648  */
     break;
 
   case 20:
-#line 183 "parser.y" /* yacc.c:1646  */
+#line 193 "src/liboconfig/parser.y" /* yacc.c:1648  */
     {
 	 (yyval.sl) = (yyvsp[-1].sl);
 	 if (((yyvsp[0].ci).values_num > 0) || ((yyvsp[0].ci).children_num > 0))
 	 {
+		 oconfig_item_t *tmp = realloc((yyval.sl).statement,
+		                               ((yyval.sl).statement_num+1) * sizeof(*tmp));
+		 if (tmp == NULL) {
+		   yyerror("realloc failed");
+		   YYERROR;
+		 }
+		 (yyval.sl).statement = tmp;
+		 (yyval.sl).statement[(yyval.sl).statement_num] = (yyvsp[0].ci);
 		 (yyval.sl).statement_num++;
-		 (yyval.sl).statement = realloc ((yyval.sl).statement, (yyval.sl).statement_num * sizeof (oconfig_item_t));
-		 (yyval.sl).statement[(yyval.sl).statement_num-1] = (yyvsp[0].ci);
 	 }
 	}
-#line 1428 "parser.c" /* yacc.c:1646  */
+#line 1447 "src/liboconfig/parser.c" /* yacc.c:1648  */
     break;
 
   case 21:
-#line 193 "parser.y" /* yacc.c:1646  */
+#line 209 "src/liboconfig/parser.y" /* yacc.c:1648  */
     {
 	 if (((yyvsp[0].ci).values_num > 0) || ((yyvsp[0].ci).children_num > 0))
 	 {
-		 (yyval.sl).statement = malloc (sizeof (oconfig_item_t));
+		 (yyval.sl).statement = calloc(1, sizeof(*(yyval.sl).statement));
+		 if ((yyval.sl).statement == NULL) {
+		   yyerror("calloc failed");
+		   YYERROR;
+		 }
 		 (yyval.sl).statement[0] = (yyvsp[0].ci);
 		 (yyval.sl).statement_num = 1;
 	 }
@@ -1442,31 +1465,37 @@ yyreduce:
 		(yyval.sl).statement_num = 0;
 	 }
 	}
-#line 1446 "parser.c" /* yacc.c:1646  */
+#line 1469 "src/liboconfig/parser.c" /* yacc.c:1648  */
     break;
 
   case 22:
-#line 210 "parser.y" /* yacc.c:1646  */
+#line 230 "src/liboconfig/parser.y" /* yacc.c:1648  */
     {
-	 ci_root = calloc (1, sizeof (*ci_root));
+	 ci_root = calloc(1, sizeof(*ci_root));
+	 if (ci_root == NULL) {
+	   yyerror("calloc failed");
+	   YYERROR;
+	 }
 	 ci_root->children = (yyvsp[0].sl).statement;
 	 ci_root->children_num = (yyvsp[0].sl).statement_num;
 	}
-#line 1456 "parser.c" /* yacc.c:1646  */
+#line 1483 "src/liboconfig/parser.c" /* yacc.c:1648  */
     break;
 
   case 23:
-#line 216 "parser.y" /* yacc.c:1646  */
+#line 240 "src/liboconfig/parser.y" /* yacc.c:1648  */
     {
-	 ci_root = calloc (1, sizeof (*ci_root));
-	 ci_root->children = NULL;
-	 ci_root->children_num = 0;
+	 ci_root = calloc(1, sizeof(*ci_root));
+	 if (ci_root == NULL) {
+	   yyerror("calloc failed");
+	   YYERROR;
+	 }
 	}
-#line 1466 "parser.c" /* yacc.c:1646  */
+#line 1495 "src/liboconfig/parser.c" /* yacc.c:1648  */
     break;
 
 
-#line 1470 "parser.c" /* yacc.c:1646  */
+#line 1499 "src/liboconfig/parser.c" /* yacc.c:1648  */
       default: break;
     }
   /* User semantic actions sometimes alter yychar, and that requires
@@ -1694,40 +1723,39 @@ yyreturn:
 #endif
   return yyresult;
 }
-#line 223 "parser.y" /* yacc.c:1906  */
+#line 249 "src/liboconfig/parser.y" /* yacc.c:1907  */
 
-static int yyerror (const char *s)
+static void yyerror(const char *s)
 {
 	const char *text;
 
-	if (*yytext == '\n')
+	if (yytext == NULL)
+		text = "<empty>";
+	else if (*yytext == '\n')
 		text = "<newline>";
 	else
 		text = yytext;
 
-	fprintf (stderr, "Parse error in file `%s', line %i near `%s': %s\n",
+	fprintf(stderr, "Parse error in file `%s', line %i near `%s': %s\n",
 		c_file, yylineno, text, s);
-	return (-1);
 } /* int yyerror */
 
 static char *unquote (const char *orig)
 {
 	char *ret = strdup (orig);
-	int len;
-
 	if (ret == NULL)
-		return (NULL);
+		return NULL;
 
-	len = strlen (ret);
+	size_t len = strlen (ret);
 
 	if ((len < 2) || (ret[0] != '"') || (ret[len - 1] != '"'))
-		return (ret);
+		return ret;
 
 	len -= 2;
 	memmove (ret, ret + 1, len);
-	ret[len] = '\0';
+	ret[len] = 0;
 
-	for (int i = 0; i < len; i++)
+	for (size_t i = 0; i < len; i++)
 	{
 		if (ret[i] == '\\')
 		{
@@ -1736,5 +1764,5 @@ static char *unquote (const char *orig)
 		}
 	}
 
-	return (ret);
+	return ret;
 } /* char *unquote */

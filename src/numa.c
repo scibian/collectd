@@ -26,8 +26,8 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 
 #if !KERNEL_LINUX
 #error "No applicable input method."
@@ -47,7 +47,7 @@ static void numa_dispatch_value(int node, /* {{{ */
   vl.values_len = 1;
 
   sstrncpy(vl.plugin, "numa", sizeof(vl.plugin));
-  ssnprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "node%i", node);
+  snprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "node%i", node);
   sstrncpy(vl.type, "vmpage_action", sizeof(vl.type));
   sstrncpy(vl.type_instance, type_instance, sizeof(vl.type_instance));
 
@@ -62,14 +62,13 @@ static int numa_read_node(int node) /* {{{ */
   int status;
   int success;
 
-  ssnprintf(path, sizeof(path), NUMA_ROOT_DIR "/node%i/numastat", node);
+  snprintf(path, sizeof(path), NUMA_ROOT_DIR "/node%i/numastat", node);
 
   fh = fopen(path, "r");
   if (fh == NULL) {
-    char errbuf[1024];
     ERROR("numa plugin: Reading node %i failed: open(%s): %s", node, path,
-          sstrerror(errno, errbuf, sizeof(errbuf)));
-    return (-1);
+          STRERRNO);
+    return -1;
   }
 
   success = 0;
@@ -95,7 +94,7 @@ static int numa_read_node(int node) /* {{{ */
   }
 
   fclose(fh);
-  return (success ? 0 : -1);
+  return success ? 0 : -1;
 } /* }}} int numa_read_node */
 
 static int numa_read(void) /* {{{ */
@@ -106,7 +105,7 @@ static int numa_read(void) /* {{{ */
 
   if (max_node < 0) {
     WARNING("numa plugin: No NUMA nodes were detected.");
-    return (-1);
+    return -1;
   }
 
   success = 0;
@@ -116,7 +115,7 @@ static int numa_read(void) /* {{{ */
       success++;
   }
 
-  return (success ? 0 : -1);
+  return success ? 0 : -1;
 } /* }}} int numa_read */
 
 static int numa_init(void) /* {{{ */
@@ -127,7 +126,7 @@ static int numa_init(void) /* {{{ */
     struct stat statbuf = {0};
     int status;
 
-    ssnprintf(path, sizeof(path), NUMA_ROOT_DIR "/node%i", max_node + 1);
+    snprintf(path, sizeof(path), NUMA_ROOT_DIR "/node%i", max_node + 1);
 
     status = stat(path, &statbuf);
     if (status == 0) {
@@ -137,20 +136,16 @@ static int numa_init(void) /* {{{ */
       break;
     } else /* ((status != 0) && (errno != ENOENT)) */
     {
-      char errbuf[1024];
-      ERROR("numa plugin: stat(%s) failed: %s", path,
-            sstrerror(errno, errbuf, sizeof(errbuf)));
-      return (-1);
+      ERROR("numa plugin: stat(%s) failed: %s", path, STRERRNO);
+      return -1;
     }
   }
 
   DEBUG("numa plugin: Found %i nodes.", max_node + 1);
-  return (0);
+  return 0;
 } /* }}} int numa_init */
 
 void module_register(void) {
   plugin_register_init("numa", numa_init);
   plugin_register_read("numa", numa_read);
 } /* void module_register */
-
-/* vim: set sw=2 sts=2 et : */

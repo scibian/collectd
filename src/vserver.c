@@ -28,8 +28,8 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 
 #include <dirent.h>
 #include <sys/types.h>
@@ -42,14 +42,14 @@
 #error "No applicable input method."
 #endif
 
-static int pagesize = 0;
+static int pagesize;
 
 static int vserver_init(void) {
   /* XXX Should we check for getpagesize () in configure?
    * What's the right thing to do, if there is no getpagesize ()? */
   pagesize = getpagesize();
 
-  return (0);
+  return 0;
 } /* static void vserver_init(void) */
 
 static void traffic_submit(const char *plugin_instance,
@@ -57,7 +57,8 @@ static void traffic_submit(const char *plugin_instance,
                            derive_t tx) {
   value_list_t vl = VALUE_LIST_INIT;
   value_t values[] = {
-      {.derive = rx}, {.derive = tx},
+      {.derive = rx},
+      {.derive = tx},
   };
 
   vl.values = values;
@@ -74,7 +75,9 @@ static void load_submit(const char *plugin_instance, gauge_t snum, gauge_t mnum,
                         gauge_t lnum) {
   value_list_t vl = VALUE_LIST_INIT;
   value_t values[] = {
-      {.gauge = snum}, {.gauge = mnum}, {.gauge = lnum},
+      {.gauge = snum},
+      {.gauge = mnum},
+      {.gauge = lnum},
   };
 
   vl.values = values;
@@ -114,8 +117,8 @@ static derive_t vserver_get_sock_bytes(const char *s) {
 
   status = parse_value(s, &v, DS_TYPE_DERIVE);
   if (status != 0)
-    return (-1);
-  return (v.derive);
+    return -1;
+  return v.derive;
 }
 
 static int vserver_read(void) {
@@ -124,10 +127,8 @@ static int vserver_read(void) {
   errno = 0;
   proc = opendir(PROCDIR);
   if (proc == NULL) {
-    char errbuf[1024];
-    ERROR("vserver plugin: fopen (%s): %s", PROCDIR,
-          sstrerror(errno, errbuf, sizeof(errbuf)));
-    return (-1);
+    ERROR("vserver plugin: fopen (%s): %s", PROCDIR, STRERRNO);
+    return -1;
   }
 
   while (42) {
@@ -146,29 +147,25 @@ static int vserver_read(void) {
     errno = 0;
     dent = readdir(proc);
     if (dent == NULL) {
-      char errbuf[4096];
-
       if (errno == 0) /* end of directory */
         break;
 
       ERROR("vserver plugin: failed to read directory %s: %s", PROCDIR,
-            sstrerror(errno, errbuf, sizeof(errbuf)));
+            STRERRNO);
       closedir(proc);
-      return (-1);
+      return -1;
     }
 
     if (dent->d_name[0] == '.')
       continue;
 
-    len = ssnprintf(file, sizeof(file), PROCDIR "/%s", dent->d_name);
+    len = snprintf(file, sizeof(file), PROCDIR "/%s", dent->d_name);
     if ((len < 0) || (len >= BUFSIZE))
       continue;
 
     status = stat(file, &statbuf);
     if (status != 0) {
-      char errbuf[4096];
-      WARNING("vserver plugin: stat (%s) failed: %s", file,
-              sstrerror(errno, errbuf, sizeof(errbuf)));
+      WARNING("vserver plugin: stat (%s) failed: %s", file, STRERRNO);
       continue;
     }
 
@@ -176,14 +173,12 @@ static int vserver_read(void) {
       continue;
 
     /* socket message accounting */
-    len = ssnprintf(file, sizeof(file), PROCDIR "/%s/cacct", dent->d_name);
+    len = snprintf(file, sizeof(file), PROCDIR "/%s/cacct", dent->d_name);
     if ((len < 0) || ((size_t)len >= sizeof(file)))
       continue;
 
     if (NULL == (fh = fopen(file, "r"))) {
-      char errbuf[1024];
-      ERROR("Cannot open '%s': %s", file,
-            sstrerror(errno, errbuf, sizeof(errbuf)));
+      ERROR("Cannot open '%s': %s", file, STRERRNO);
     }
 
     while ((fh != NULL) && (NULL != fgets(buffer, BUFSIZE, fh))) {
@@ -220,14 +215,12 @@ static int vserver_read(void) {
     }
 
     /* thread information and load */
-    len = ssnprintf(file, sizeof(file), PROCDIR "/%s/cvirt", dent->d_name);
+    len = snprintf(file, sizeof(file), PROCDIR "/%s/cvirt", dent->d_name);
     if ((len < 0) || ((size_t)len >= sizeof(file)))
       continue;
 
     if (NULL == (fh = fopen(file, "r"))) {
-      char errbuf[1024];
-      ERROR("Cannot open '%s': %s", file,
-            sstrerror(errno, errbuf, sizeof(errbuf)));
+      ERROR("Cannot open '%s': %s", file, STRERRNO);
     }
 
     while ((fh != NULL) && (NULL != fgets(buffer, BUFSIZE, fh))) {
@@ -266,14 +259,12 @@ static int vserver_read(void) {
     }
 
     /* processes and memory usage */
-    len = ssnprintf(file, sizeof(file), PROCDIR "/%s/limit", dent->d_name);
+    len = snprintf(file, sizeof(file), PROCDIR "/%s/limit", dent->d_name);
     if ((len < 0) || ((size_t)len >= sizeof(file)))
       continue;
 
     if (NULL == (fh = fopen(file, "r"))) {
-      char errbuf[1024];
-      ERROR("Cannot open '%s': %s", file,
-            sstrerror(errno, errbuf, sizeof(errbuf)));
+      ERROR("Cannot open '%s': %s", file, STRERRNO);
     }
 
     while ((fh != NULL) && (NULL != fgets(buffer, BUFSIZE, fh))) {
@@ -314,12 +305,10 @@ static int vserver_read(void) {
 
   closedir(proc);
 
-  return (0);
+  return 0;
 } /* int vserver_read */
 
 void module_register(void) {
   plugin_register_init("vserver", vserver_init);
   plugin_register_read("vserver", vserver_read);
 } /* void module_register(void) */
-
-/* vim: set ts=4 sw=4 noexpandtab : */

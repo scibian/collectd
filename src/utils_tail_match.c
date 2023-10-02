@@ -31,11 +31,11 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
-#include "utils_latency_config.h"
-#include "utils_match.h"
-#include "utils_tail.h"
+#include "utils/common/common.h"
+#include "utils/latency/latency_config.h"
+#include "utils/match/match.h"
+#include "utils/tail/tail.h"
 #include "utils_tail_match.h"
 
 struct cu_tail_match_simple_s {
@@ -43,7 +43,6 @@ struct cu_tail_match_simple_s {
   char plugin_instance[DATA_MAX_NAME_LEN];
   char type[DATA_MAX_NAME_LEN];
   char type_instance[DATA_MAX_NAME_LEN];
-  cdtime_t interval;
   latency_config_t latency_config;
 };
 typedef struct cu_tail_match_simple_s cu_tail_match_simple_t;
@@ -57,10 +56,7 @@ struct cu_tail_match_match_s {
 typedef struct cu_tail_match_match_s cu_tail_match_match_t;
 
 struct cu_tail_match_s {
-  int flags;
   cu_tail_t *tail;
-
-  cdtime_t interval;
   cu_tail_match_match_t *matches;
   size_t matches_num;
 };
@@ -76,7 +72,7 @@ static int simple_submit_match(cu_match_t *match, void *user_data) {
 
   match_value = (cu_match_value_t *)match_get_user_data(match);
   if (match_value == NULL)
-    return (-1);
+    return -1;
 
   if ((match_value->ds_type & UTILS_MATCH_DS_TYPE_GAUGE) &&
       (match_value->values_num == 0))
@@ -92,11 +88,10 @@ static int simple_submit_match(cu_match_t *match, void *user_data) {
   sstrncpy(vl.type, data->type, sizeof(vl.type));
   sstrncpy(vl.type_instance, data->type_instance, sizeof(vl.type_instance));
 
-  vl.interval = data->interval;
   plugin_dispatch_values(&vl);
 
   match_value_reset(match_value);
-  return (0);
+  return 0;
 } /* int simple_submit_match */
 
 static int latency_submit_match(cu_match_t *match, void *user_data) {
@@ -106,24 +101,22 @@ static int latency_submit_match(cu_match_t *match, void *user_data) {
 
   match_value = (cu_match_value_t *)match_get_user_data(match);
   if (match_value == NULL)
-    return (-1);
+    return -1;
 
-  sstrncpy(vl.host, hostname_g, sizeof(vl.host));
   sstrncpy(vl.plugin, data->plugin, sizeof(vl.plugin));
   sstrncpy(vl.plugin_instance, data->plugin_instance,
            sizeof(vl.plugin_instance));
-  vl.interval = data->interval;
   vl.time = cdtime();
 
   /* Submit percentiles */
   sstrncpy(vl.type, data->type, sizeof(vl.type));
   for (size_t i = 0; i < data->latency_config.percentile_num; i++) {
     if (strlen(data->type_instance) != 0)
-      ssnprintf(vl.type_instance, sizeof(vl.type_instance), "%s-%.0f",
-                data->type_instance, data->latency_config.percentile[i]);
+      snprintf(vl.type_instance, sizeof(vl.type_instance), "%.50s-%.5g",
+               data->type_instance, data->latency_config.percentile[i]);
     else
-      ssnprintf(vl.type_instance, sizeof(vl.type_instance), "%.0f",
-                data->latency_config.percentile[i]);
+      snprintf(vl.type_instance, sizeof(vl.type_instance), "%.5g",
+               data->latency_config.percentile[i]);
 
     vl.values = &(value_t){
         .gauge =
@@ -138,7 +131,11 @@ static int latency_submit_match(cu_match_t *match, void *user_data) {
   }
 
   /* Submit buckets */
-  sstrncpy(vl.type, "bucket", sizeof(vl.type));
+  if (data->latency_config.bucket_type != NULL)
+    sstrncpy(vl.type, data->latency_config.bucket_type, sizeof(vl.type));
+  else
+    sstrncpy(vl.type, "bucket", sizeof(vl.type));
+
   for (size_t i = 0; i < data->latency_config.buckets_num; i++) {
     latency_bucket_t bucket = data->latency_config.buckets[i];
 
@@ -147,11 +144,11 @@ static int latency_submit_match(cu_match_t *match, void *user_data) {
         bucket.upper_bound ? CDTIME_T_TO_DOUBLE(bucket.upper_bound) : INFINITY;
 
     if (strlen(data->type_instance) != 0)
-      ssnprintf(vl.type_instance, sizeof(vl.type_instance), "%s-%s-%g_%g",
-                data->type, data->type_instance, lower_bound, upper_bound);
+      snprintf(vl.type_instance, sizeof(vl.type_instance), "%.50s-%.50s-%g_%g",
+               data->type, data->type_instance, lower_bound, upper_bound);
     else
-      ssnprintf(vl.type_instance, sizeof(vl.type_instance), "%s-%g_%g",
-                data->type, lower_bound, upper_bound);
+      snprintf(vl.type_instance, sizeof(vl.type_instance), "%.50s-%g_%g",
+               data->type, lower_bound, upper_bound);
 
     vl.values = &(value_t){
         .gauge =
@@ -167,7 +164,7 @@ static int latency_submit_match(cu_match_t *match, void *user_data) {
   match_value->values_num = 0;
   latency_counter_reset(match_value->latency);
 
-  return (0);
+  return 0;
 } /* int latency_submit_match */
 
 static int tail_callback(void *data, char *buf,
@@ -177,7 +174,7 @@ static int tail_callback(void *data, char *buf,
   for (size_t i = 0; i < obj->matches_num; i++)
     match_apply(obj->matches[i].match, buf);
 
-  return (0);
+  return 0;
 } /* int tail_callback */
 
 static void tail_match_simple_free(void *data) {
@@ -194,15 +191,15 @@ cu_tail_match_t *tail_match_create(const char *filename) {
 
   obj = calloc(1, sizeof(*obj));
   if (obj == NULL)
-    return (NULL);
+    return NULL;
 
   obj->tail = cu_tail_create(filename);
   if (obj->tail == NULL) {
     sfree(obj);
-    return (NULL);
+    return NULL;
   }
 
-  return (obj);
+  return obj;
 } /* cu_tail_match_t *tail_match_create */
 
 void tail_match_destroy(cu_tail_match_t *obj) {
@@ -240,13 +237,11 @@ int tail_match_add_match(cu_tail_match_t *obj, cu_match_t *match,
   temp = realloc(obj->matches,
                  sizeof(cu_tail_match_match_t) * (obj->matches_num + 1));
   if (temp == NULL)
-    return (-1);
+    return -1;
 
   obj->matches = temp;
   obj->matches_num++;
 
-  DEBUG("tail_match_add_match interval %lf",
-        CDTIME_T_TO_DOUBLE(((cu_tail_match_simple_t *)user_data)->interval));
   temp = obj->matches + (obj->matches_num - 1);
 
   temp->match = match;
@@ -254,27 +249,26 @@ int tail_match_add_match(cu_tail_match_t *obj, cu_match_t *match,
   temp->submit = submit_match;
   temp->free = free_user_data;
 
-  return (0);
+  return 0;
 } /* int tail_match_add_match */
 
 int tail_match_add_match_simple(cu_tail_match_t *obj, const char *regex,
                                 const char *excluderegex, int ds_type,
                                 const char *plugin, const char *plugin_instance,
                                 const char *type, const char *type_instance,
-                                const latency_config_t latency_cfg,
-                                const cdtime_t interval) {
+                                const latency_config_t latency_cfg) {
   cu_match_t *match;
   cu_tail_match_simple_t *user_data;
   int status;
 
   match = match_create_simple(regex, excluderegex, ds_type);
   if (match == NULL)
-    return (-1);
+    return -1;
 
   user_data = calloc(1, sizeof(*user_data));
   if (user_data == NULL) {
     match_destroy(match);
-    return (-1);
+    return -1;
   }
 
   sstrncpy(user_data->plugin, plugin, sizeof(user_data->plugin));
@@ -286,8 +280,6 @@ int tail_match_add_match_simple(cu_tail_match_t *obj, const char *regex,
   if (type_instance != NULL)
     sstrncpy(user_data->type_instance, type_instance,
              sizeof(user_data->type_instance));
-
-  user_data->interval = interval;
 
   if ((ds_type & UTILS_MATCH_DS_TYPE_GAUGE) &&
       (ds_type & UTILS_MATCH_CF_GAUGE_DIST)) {
@@ -311,7 +303,7 @@ out:
     match_destroy(match);
   }
 
-  return (status);
+  return status;
 } /* int tail_match_add_match_simple */
 
 int tail_match_read(cu_tail_match_t *obj) {
@@ -322,7 +314,7 @@ int tail_match_read(cu_tail_match_t *obj) {
                         (void *)obj);
   if (status != 0) {
     ERROR("tail_match: cu_tail_read failed.");
-    return (status);
+    return status;
   }
 
   for (size_t i = 0; i < obj->matches_num; i++) {
@@ -334,7 +326,5 @@ int tail_match_read(cu_tail_match_t *obj) {
     (*lt_match->submit)(lt_match->match, lt_match->user_data);
   }
 
-  return (0);
+  return 0;
 } /* int tail_match_read */
-
-/* vim: set sw=2 sts=2 ts=8 : */

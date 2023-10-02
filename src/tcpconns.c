@@ -59,19 +59,23 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 
-#if defined(__OpenBSD__) || defined(__NetBSD__)
+#if defined(__OpenBSD__)
+#define HAVE_KVM_GETFILES 1
+#endif
+
+#if defined(__NetBSD__)
 #undef HAVE_SYSCTLBYNAME /* force HAVE_LIBKVM_NLIST path */
 #endif
 
-#if !KERNEL_LINUX && !HAVE_SYSCTLBYNAME && !HAVE_LIBKVM_NLIST && !KERNEL_AIX
+#if !KERNEL_LINUX && !HAVE_SYSCTLBYNAME && !HAVE_KVM_GETFILES &&               \
+    !HAVE_LIBKVM_NLIST && !KERNEL_AIX
 #error "No applicable input method."
 #endif
 
 #if KERNEL_LINUX
-#include <asm/types.h>
 #include <linux/netlink.h>
 #if HAVE_LINUX_INET_DIAG_H
 #include <linux/inet_diag.h>
@@ -105,7 +109,19 @@
 #include <netinet/tcpip.h>
 /* #endif HAVE_SYSCTLBYNAME */
 
-/* This is for OpenBSD and NetBSD. */
+#elif HAVE_KVM_GETFILES
+#include <sys/sysctl.h>
+#include <sys/types.h>
+#define _KERNEL /* for DTYPE_SOCKET */
+#include <sys/file.h>
+#undef _KERNEL
+
+#include <netinet/in.h>
+
+#include <kvm.h>
+/* #endif HAVE_KVM_GETFILES */
+
+/* This is for NetBSD. */
 #elif HAVE_LIBKVM_NLIST
 #include <arpa/inet.h>
 #include <net/route.h>
@@ -169,6 +185,19 @@ static const char *tcp_state[] = {"CLOSED",    "LISTEN",      "SYN_SENT",
 #define TCP_STATE_MAX 10
 /* #endif HAVE_SYSCTLBYNAME */
 
+#elif HAVE_KVM_GETFILES
+static const char *tcp_state[] = {"CLOSED",    "LISTEN",      "SYN_SENT",
+                                  "SYN_RECV",  "ESTABLISHED", "CLOSE_WAIT",
+                                  "FIN_WAIT1", "CLOSING",     "LAST_ACK",
+                                  "FIN_WAIT2", "TIME_WAIT"};
+
+#define TCP_STATE_LISTEN 1
+#define TCP_STATE_MIN 0
+#define TCP_STATE_MAX 10
+
+static kvm_t *kvmd;
+/* #endif HAVE_KVM_GETFILES */
+
 #elif HAVE_LIBKVM_NLIST
 static const char *tcp_state[] = {"CLOSED",    "LISTEN",      "SYN_SENT",
                                   "SYN_RECV",  "ESTABLISHED", "CLOSE_WAIT",
@@ -176,7 +205,7 @@ static const char *tcp_state[] = {"CLOSED",    "LISTEN",      "SYN_SENT",
                                   "FIN_WAIT2", "TIME_WAIT"};
 
 static kvm_t *kvmd;
-static u_long inpcbtable_off = 0;
+static u_long inpcbtable_off;
 struct inpcbtable *inpcbtable_ptr = NULL;
 
 #define TCP_STATE_LISTEN 1
@@ -232,9 +261,9 @@ static const char *config_keys[] = {"ListeningPorts", "LocalPort", "RemotePort",
                                     "AllPortsSummary"};
 static int config_keys_num = STATIC_ARRAY_SIZE(config_keys);
 
-static int port_collect_listening = 0;
-static int port_collect_total = 0;
-static port_entry_t *port_list_head = NULL;
+static int port_collect_listening;
+static int port_collect_total;
+static port_entry_t *port_list_head;
 static uint32_t count_total[TCP_STATE_MAX + 1];
 
 #if KERNEL_LINUX
@@ -242,7 +271,7 @@ static uint32_t count_total[TCP_STATE_MAX + 1];
 /* This depends on linux inet_diag_req because if this structure is missing,
  * sequence_number is useless and we get a compilation warning.
  */
-static uint32_t sequence_number = 0;
+static uint32_t sequence_number;
 #endif
 
 static enum { SRC_DUNNO, SRC_NETLINK, SRC_PROC } linux_source = SRC_DUNNO;
@@ -263,8 +292,8 @@ static void conn_submit_port_entry(port_entry_t *pe) {
 
   if (((port_collect_listening != 0) && (pe->flags & PORT_IS_LISTENING)) ||
       (pe->flags & PORT_COLLECT_LOCAL)) {
-    ssnprintf(vl.plugin_instance, sizeof(vl.plugin_instance),
-              "%" PRIu16 "-local", pe->port);
+    snprintf(vl.plugin_instance, sizeof(vl.plugin_instance),
+             "%" PRIu16 "-local", pe->port);
 
     for (int i = 1; i <= TCP_STATE_MAX; i++) {
       vl.values[0].gauge = pe->count_local[i];
@@ -276,8 +305,8 @@ static void conn_submit_port_entry(port_entry_t *pe) {
   }
 
   if (pe->flags & PORT_COLLECT_REMOTE) {
-    ssnprintf(vl.plugin_instance, sizeof(vl.plugin_instance),
-              "%" PRIu16 "-remote", pe->port);
+    snprintf(vl.plugin_instance, sizeof(vl.plugin_instance),
+             "%" PRIu16 "-remote", pe->port);
 
     for (int i = 1; i <= TCP_STATE_MAX; i++) {
       vl.values[0].gauge = pe->count_remote[i];
@@ -327,14 +356,14 @@ static port_entry_t *conn_get_port_entry(uint16_t port, int create) {
   if ((ret == NULL) && (create != 0)) {
     ret = calloc(1, sizeof(*ret));
     if (ret == NULL)
-      return (NULL);
+      return NULL;
 
     ret->port = port;
     ret->next = port_list_head;
     port_list_head = ret;
   }
 
-  return (ret);
+  return ret;
 } /* port_entry_t *conn_get_port_entry */
 
 /* Removes ports that were added automatically due to the `ListeningPorts'
@@ -384,11 +413,11 @@ static int conn_handle_ports(uint16_t port_local, uint16_t port_remote,
 #if TCP_STATE_MIN > 0
       || (state < TCP_STATE_MIN)
 #endif
-          ) {
+  ) {
     NOTICE("tcpconns plugin: Ignoring connection with "
            "unknown state 0x%02" PRIx8 ".",
            state);
-    return (-1);
+    return -1;
   }
 
   count_total[state]++;
@@ -411,7 +440,7 @@ static int conn_handle_ports(uint16_t port_local, uint16_t port_remote,
   if (pe != NULL)
     pe->count_remote[state]++;
 
-  return (0);
+  return 0;
 } /* int conn_handle_ports */
 
 #if KERNEL_LINUX
@@ -429,8 +458,8 @@ static int conn_read_netlink(void) {
   if (fd < 0) {
     ERROR("tcpconns plugin: conn_read_netlink: socket(AF_NETLINK, SOCK_RAW, "
           "NETLINK_INET_DIAG) failed: %s",
-          sstrerror(errno, buf, sizeof(buf)));
-    return (-1);
+          STRERRNO);
+    return -1;
   }
 
   struct sockaddr_nl nladdr = {.nl_family = AF_NETLINK};
@@ -460,16 +489,15 @@ static int conn_read_netlink(void) {
 
   if (sendmsg(fd, &msg, 0) < 0) {
     ERROR("tcpconns plugin: conn_read_netlink: sendmsg(2) failed: %s",
-          sstrerror(errno, buf, sizeof(buf)));
+          STRERRNO);
     close(fd);
-    return (-1);
+    return -1;
   }
 
   iov.iov_base = buf;
   iov.iov_len = sizeof(buf);
 
   while (1) {
-    int status;
     struct nlmsghdr *h;
 
     memset(&msg, 0, sizeof(msg));
@@ -478,20 +506,20 @@ static int conn_read_netlink(void) {
     msg.msg_iov = &iov;
     msg.msg_iovlen = 1;
 
-    status = recvmsg(fd, (void *)&msg, /* flags = */ 0);
+    ssize_t status = recvmsg(fd, (void *)&msg, /* flags = */ 0);
     if (status < 0) {
       if ((errno == EINTR) || (errno == EAGAIN))
         continue;
 
       ERROR("tcpconns plugin: conn_read_netlink: recvmsg(2) failed: %s",
-            sstrerror(errno, buf, sizeof(buf)));
+            STRERRNO);
       close(fd);
-      return (-1);
+      return -1;
     } else if (status == 0) {
       close(fd);
       DEBUG("tcpconns plugin: conn_read_netlink: Unexpected zero-sized "
             "reply from netlink socket.");
-      return (0);
+      return 0;
     }
 
     h = (struct nlmsghdr *)buf;
@@ -503,7 +531,7 @@ static int conn_read_netlink(void) {
 
       if (h->nlmsg_type == NLMSG_DONE) {
         close(fd);
-        return (0);
+        return 0;
       } else if (h->nlmsg_type == NLMSG_ERROR) {
         struct nlmsgerr *msg_error;
 
@@ -512,7 +540,7 @@ static int conn_read_netlink(void) {
                 msg_error->error);
 
         close(fd);
-        return (1);
+        return 1;
       }
 
       r = NLMSG_DATA(h);
@@ -526,9 +554,9 @@ static int conn_read_netlink(void) {
   }   /* while (1) */
 
   /* Not reached because the while() loop above handles the exit condition. */
-  return (0);
+  return 0;
 #else
-  return (1);
+  return 1;
 #endif /* HAVE_STRUCT_LINUX_INET_DIAG_REQ */
 } /* int conn_read_netlink */
 
@@ -545,45 +573,45 @@ static int conn_handle_line(char *buffer) {
 
   uint8_t state;
 
-  int buffer_len = strlen(buffer);
+  size_t buffer_len = strlen(buffer);
 
   while ((buffer_len > 0) && (buffer[buffer_len - 1] < 32))
     buffer[--buffer_len] = '\0';
-  if (buffer_len <= 0)
-    return (-1);
+  if (buffer_len == 0)
+    return -1;
 
   fields_len = strsplit(buffer, fields, STATIC_ARRAY_SIZE(fields));
   if (fields_len < 12) {
     DEBUG("tcpconns plugin: Got %i fields, expected at least 12.", fields_len);
-    return (-1);
+    return -1;
   }
 
   port_local_str = strchr(fields[1], ':');
   port_remote_str = strchr(fields[2], ':');
 
   if ((port_local_str == NULL) || (port_remote_str == NULL))
-    return (-1);
+    return -1;
   port_local_str++;
   port_remote_str++;
   if ((*port_local_str == '\0') || (*port_remote_str == '\0'))
-    return (-1);
+    return -1;
 
   endptr = NULL;
   port_local = (uint16_t)strtol(port_local_str, &endptr, 16);
   if ((endptr == NULL) || (*endptr != '\0'))
-    return (-1);
+    return -1;
 
   endptr = NULL;
   port_remote = (uint16_t)strtol(port_remote_str, &endptr, 16);
   if ((endptr == NULL) || (*endptr != '\0'))
-    return (-1);
+    return -1;
 
   endptr = NULL;
   state = (uint8_t)strtol(fields[3], &endptr, 16);
   if ((endptr == NULL) || (*endptr != '\0'))
-    return (-1);
+    return -1;
 
-  return (conn_handle_ports(port_local, port_remote, state));
+  return conn_handle_ports(port_local, port_remote, state);
 } /* int conn_handle_line */
 
 static int conn_read_file(const char *file) {
@@ -592,7 +620,7 @@ static int conn_read_file(const char *file) {
 
   fh = fopen(file, "r");
   if (fh == NULL)
-    return (-1);
+    return -1;
 
   while (fgets(buffer, sizeof(buffer), fh) != NULL) {
     conn_handle_line(buffer);
@@ -600,12 +628,12 @@ static int conn_read_file(const char *file) {
 
   fclose(fh);
 
-  return (0);
+  return 0;
 } /* int conn_read_file */
-/* #endif KERNEL_LINUX */
+  /* #endif KERNEL_LINUX */
 
 #elif HAVE_SYSCTLBYNAME
-/* #endif HAVE_SYSCTLBYNAME */
+  /* #endif HAVE_SYSCTLBYNAME */
 
 #elif HAVE_LIBKVM_NLIST
 #endif /* HAVE_LIBKVM_NLIST */
@@ -623,13 +651,13 @@ static int conn_config(const char *key, const char *value) {
 
     if ((port < 1) || (port > 65535)) {
       ERROR("tcpconns plugin: Invalid port: %i", port);
-      return (1);
+      return 1;
     }
 
     pe = conn_get_port_entry((uint16_t)port, 1 /* create */);
     if (pe == NULL) {
       ERROR("tcpconns plugin: conn_get_port_entry failed.");
-      return (1);
+      return 1;
     }
 
     if (strcasecmp(key, "LocalPort") == 0)
@@ -642,10 +670,10 @@ static int conn_config(const char *key, const char *value) {
     else
       port_collect_total = 0;
   } else {
-    return (-1);
+    return -1;
   }
 
-  return (0);
+  return 0;
 } /* int conn_config */
 
 #if KERNEL_LINUX
@@ -653,7 +681,7 @@ static int conn_init(void) {
   if (port_collect_total == 0 && port_list_head == NULL)
     port_collect_listening = 1;
 
-  return (0);
+  return 0;
 } /* int conn_init */
 
 static int conn_read(void) {
@@ -690,18 +718,18 @@ static int conn_read(void) {
       linux_source = SRC_PROC;
 
       /* return success here to avoid the "plugin failed" message. */
-      return (0);
+      return 0;
     }
   }
 
   if (status == 0)
     conn_submit_all();
   else
-    return (status);
+    return status;
 
-  return (0);
+  return 0;
 } /* int conn_read */
-/* #endif KERNEL_LINUX */
+  /* #endif KERNEL_LINUX */
 
 #elif HAVE_SYSCTLBYNAME
 static int conn_read(void) {
@@ -719,35 +747,41 @@ static int conn_read(void) {
   status = sysctlbyname("net.inet.tcp.pcblist", NULL, &buffer_len, 0, 0);
   if (status < 0) {
     ERROR("tcpconns plugin: sysctlbyname failed.");
-    return (-1);
+    return -1;
   }
 
   buffer = malloc(buffer_len);
   if (buffer == NULL) {
     ERROR("tcpconns plugin: malloc failed.");
-    return (-1);
+    return -1;
   }
 
   status = sysctlbyname("net.inet.tcp.pcblist", buffer, &buffer_len, 0, 0);
   if (status < 0) {
     ERROR("tcpconns plugin: sysctlbyname failed.");
     sfree(buffer);
-    return (-1);
+    return -1;
   }
 
   if (buffer_len <= sizeof(struct xinpgen)) {
     ERROR("tcpconns plugin: (buffer_len <= sizeof (struct xinpgen))");
     sfree(buffer);
-    return (-1);
+    return -1;
   }
 
   in_orig = (struct xinpgen *)buffer;
   for (in_ptr = (struct xinpgen *)(((char *)in_orig) + in_orig->xig_len);
        in_ptr->xig_len > sizeof(struct xinpgen);
        in_ptr = (struct xinpgen *)(((char *)in_ptr) + in_ptr->xig_len)) {
+#if __FreeBSD_version >= 1200026
+    struct xtcpcb *tp = (struct xtcpcb *)in_ptr;
+    struct xinpcb *inp = &tp->xt_inp;
+    struct xsocket *so = &inp->xi_socket;
+#else
     struct tcpcb *tp = &((struct xtcpcb *)in_ptr)->xt_tp;
     struct inpcb *inp = &((struct xtcpcb *)in_ptr)->xt_inp;
     struct xsocket *so = &((struct xtcpcb *)in_ptr)->xt_socket;
+#endif
 
     /* Ignore non-TCP sockets */
     if (so->xso_protocol != IPPROTO_TCP)
@@ -771,9 +805,51 @@ static int conn_read(void) {
 
   conn_submit_all();
 
-  return (0);
+  return 0;
 } /* int conn_read */
   /* #endif HAVE_SYSCTLBYNAME */
+
+#elif HAVE_KVM_GETFILES
+
+static int conn_init(void) {
+  char buf[_POSIX2_LINE_MAX];
+
+  kvmd = kvm_openfiles(NULL, NULL, NULL, KVM_NO_FILES, buf);
+  if (kvmd == NULL) {
+    ERROR("tcpconns plugin: kvm_openfiles failed: %s", buf);
+    return -1;
+  }
+
+  return 0;
+} /* int conn_init */
+
+static int conn_read(void) {
+  struct kinfo_file *kf;
+  int i, fcnt;
+
+  conn_reset_port_entry();
+
+  kf = kvm_getfiles(kvmd, KERN_FILE_BYFILE, DTYPE_SOCKET, sizeof(*kf), &fcnt);
+  if (kf == NULL) {
+    ERROR("tcpconns plugin: kvm_getfiles failed.");
+    return -1;
+  }
+
+  for (i = 0; i < fcnt; i++) {
+    if (kf[i].so_protocol != IPPROTO_TCP)
+      continue;
+    if (kf[i].inp_fport == 0)
+      continue;
+    conn_handle_ports(ntohs(kf[i].inp_lport), ntohs(kf[i].inp_fport),
+                      kf[i].t_state);
+  }
+
+  conn_submit_all();
+
+  return 0;
+}
+  /* int conn_read */
+  /* #endif HAVE_KVM_GETFILES */
 
 #elif HAVE_LIBKVM_NLIST
 static int kread(u_long addr, void *buf, int size) {
@@ -783,9 +859,9 @@ static int kread(u_long addr, void *buf, int size) {
   if (status != size) {
     ERROR("tcpconns plugin: kvm_read failed (got %i, expected %i): %s\n",
           status, size, kvm_geterr(kvmd));
-    return (-1);
+    return -1;
   }
-  return (0);
+  return 0;
 } /* int kread */
 
 static int conn_init(void) {
@@ -798,25 +874,25 @@ static int conn_init(void) {
   kvmd = kvm_openfiles(NULL, NULL, NULL, O_RDONLY, buf);
   if (kvmd == NULL) {
     ERROR("tcpconns plugin: kvm_openfiles failed: %s", buf);
-    return (-1);
+    return -1;
   }
 
   status = kvm_nlist(kvmd, nl);
   if (status < 0) {
     ERROR("tcpconns plugin: kvm_nlist failed with status %i.", status);
-    return (-1);
+    return -1;
   }
 
   if (nl[N_TCBTABLE].n_type == 0) {
     ERROR("tcpconns plugin: Error looking up kernel's namelist: "
           "N_TCBTABLE is invalid.");
-    return (-1);
+    return -1;
   }
 
   inpcbtable_off = (u_long)nl[N_TCBTABLE].n_value;
   inpcbtable_ptr = (struct inpcbtable *)nl[N_TCBTABLE].n_value;
 
-  return (0);
+  return 0;
 } /* int conn_init */
 
 static int conn_read(void) {
@@ -835,7 +911,7 @@ static int conn_read(void) {
   /* Read the pcbtable from the kernel */
   status = kread(inpcbtable_off, &table, sizeof(table));
   if (status != 0)
-    return (-1);
+    return -1;
 
 #if defined(__OpenBSD__) ||                                                    \
     (defined(__NetBSD_Version__) && __NetBSD_Version__ > 699002700)
@@ -855,7 +931,7 @@ static int conn_read(void) {
     /* Read the pcb pointed to by `next' into `inpcb' */
     status = kread((u_long)next, &inpcb, sizeof(inpcb));
     if (status != 0)
-      return (-1);
+      return -1;
 
 /* Advance `next' */
 #if defined(__OpenBSD__) ||                                                    \
@@ -881,16 +957,16 @@ static int conn_read(void) {
 
     status = kread((u_long)inpcb.inp_ppcb, &tcpcb, sizeof(tcpcb));
     if (status != 0)
-      return (-1);
+      return -1;
     conn_handle_ports(ntohs(inpcb.inp_lport), ntohs(inpcb.inp_fport),
                       tcpcb.t_state);
   } /* while (next != head) */
 
   conn_submit_all();
 
-  return (0);
+  return 0;
 }
-/* #endif HAVE_LIBKVM_NLIST */
+  /* #endif HAVE_LIBKVM_NLIST */
 
 #elif KERNEL_AIX
 
@@ -906,27 +982,27 @@ static int conn_read(void) {
   size = netinfo(NETINFO_TCP, 0, 0, 0);
   if (size < 0) {
     ERROR("tcpconns plugin: netinfo failed return: %i", size);
-    return (-1);
+    return -1;
   }
 
   if (size == 0)
-    return (0);
+    return 0;
 
   if ((size - sizeof(struct netinfo_header)) % sizeof(struct netinfo_conn)) {
     ERROR("tcpconns plugin: invalid buffer size");
-    return (-1);
+    return -1;
   }
 
   data = malloc(size);
   if (data == NULL) {
     ERROR("tcpconns plugin: malloc failed");
-    return (-1);
+    return -1;
   }
 
   if (netinfo(NETINFO_TCP, data, &size, 0) < 0) {
     ERROR("tcpconns plugin: netinfo failed");
     free(data);
-    return (-1);
+    return -1;
   }
 
   header = (struct netinfo_header *)data;
@@ -941,7 +1017,7 @@ static int conn_read(void) {
 
   conn_submit_all();
 
-  return (0);
+  return 0;
 }
 #endif /* KERNEL_AIX */
 
@@ -958,7 +1034,3 @@ void module_register(void) {
 #endif
   plugin_register_read("tcpconns", conn_read);
 } /* void module_register */
-
-/*
- * vim: set shiftwidth=2 softtabstop=2 tabstop=8 fdm=marker :
- */

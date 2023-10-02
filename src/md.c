@@ -21,9 +21,9 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
-#include "utils_ignorelist.h"
+#include "utils/common/common.h"
+#include "utils/ignorelist/ignorelist.h"
 
 #include <sys/ioctl.h>
 
@@ -40,23 +40,23 @@
 static const char *config_keys[] = {"Device", "IgnoreSelected"};
 static int config_keys_num = STATIC_ARRAY_SIZE(config_keys);
 
-static ignorelist_t *ignorelist = NULL;
+static ignorelist_t *ignorelist;
 
 static int md_config(const char *key, const char *value) {
   if (ignorelist == NULL)
     ignorelist = ignorelist_create(/* invert = */ 1);
   if (ignorelist == NULL)
-    return (1);
+    return 1;
 
   if (strcasecmp(key, "Device") == 0) {
     ignorelist_add(ignorelist, value);
   } else if (strcasecmp(key, "IgnoreSelected") == 0) {
     ignorelist_set_invert(ignorelist, IS_TRUE(value) ? 0 : 1);
   } else {
-    return (-1);
+    return -1;
   }
 
-  return (0);
+  return 0;
 }
 
 static void md_submit(const int minor, const char *type_instance,
@@ -66,7 +66,7 @@ static void md_submit(const int minor, const char *type_instance,
   vl.values = &(value_t){.gauge = value};
   vl.values_len = 1;
   sstrncpy(vl.plugin, "md", sizeof(vl.plugin));
-  ssnprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "%i", minor);
+  snprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "%i", minor);
   sstrncpy(vl.type, "md_disks", sizeof(vl.type));
   sstrncpy(vl.type_instance, type_instance, sizeof(vl.type_instance));
 
@@ -74,7 +74,6 @@ static void md_submit(const int minor, const char *type_instance,
 } /* void md_submit */
 
 static void md_process(const int minor, const char *path) {
-  char errbuf[1024];
   int fd;
   struct stat st;
   mdu_array_info_t array;
@@ -82,13 +81,12 @@ static void md_process(const int minor, const char *path) {
 
   fd = open(path, O_RDONLY);
   if (fd < 0) {
-    WARNING("md: open(%s): %s", path, sstrerror(errno, errbuf, sizeof(errbuf)));
+    WARNING("md: open(%s): %s", path, STRERRNO);
     return;
   }
 
   if (fstat(fd, &st) < 0) {
-    WARNING("md: Unable to fstat file descriptor for %s: %s", path,
-            sstrerror(errno, errbuf, sizeof(errbuf)));
+    WARNING("md: Unable to fstat file descriptor for %s: %s", path, STRERRNO);
     close(fd);
     return;
   }
@@ -109,8 +107,7 @@ static void md_process(const int minor, const char *path) {
 
   /* Retrieve md information */
   if (ioctl(fd, GET_ARRAY_INFO, &array) < 0) {
-    WARNING("md: Unable to retrieve array info from %s: %s", path,
-            sstrerror(errno, errbuf, sizeof(errbuf)));
+    WARNING("md: Unable to retrieve array info from %s: %s", path, STRERRNO);
     close(fd);
     return;
   }
@@ -146,10 +143,8 @@ static int md_read(void) {
 
   fh = fopen(PROC_DISKSTATS, "r");
   if (fh == NULL) {
-    char errbuf[1024];
-    WARNING("md: Unable to open %s: %s", PROC_DISKSTATS,
-            sstrerror(errno, errbuf, sizeof(errbuf)));
-    return (-1);
+    WARNING("md: Unable to open %s: %s", PROC_DISKSTATS, STRERRNO);
+    return -1;
   }
 
   /* Iterate md devices */
@@ -180,14 +175,14 @@ static int md_read(void) {
      * major/minor, but that again can be tricky if the filesystem
      * with the device file is mounted using the "nodev" option.
      */
-    ssnprintf(path, sizeof(path), "%s/%s", DEV_DIR, name);
+    snprintf(path, sizeof(path), "%s/%s", DEV_DIR, name);
 
     md_process(minor, path);
   }
 
   fclose(fh);
 
-  return (0);
+  return 0;
 } /* int md_read */
 
 void module_register(void) {

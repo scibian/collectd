@@ -27,11 +27,11 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 
-#include "utils_format_graphite.h"
-#include "utils_format_json.h"
+#include "utils/format_graphite/format_graphite.h"
+#include "utils/format_json/format_json.h"
 
 #include <netdb.h>
 
@@ -54,11 +54,11 @@ static int wl_write_graphite(const data_set_t *ds, const value_list_t *vl) {
 
   status = format_graphite(buffer, sizeof(buffer), ds, vl, NULL, NULL, '_', 0);
   if (status != 0) /* error message has been printed already. */
-    return (status);
+    return status;
 
   INFO("write_log values:\n%s", buffer);
 
-  return (0);
+  return 0;
 } /* int wl_write_graphite */
 
 static int wl_write_json(const data_set_t *ds, const value_list_t *vl) {
@@ -78,7 +78,7 @@ static int wl_write_json(const data_set_t *ds, const value_list_t *vl) {
 
   INFO("write_log values:\n%s", buffer);
 
-  return (0);
+  return 0;
 } /* int wl_write_json */
 
 static int wl_write(const data_set_t *ds, const value_list_t *vl,
@@ -91,12 +91,12 @@ static int wl_write(const data_set_t *ds, const value_list_t *vl,
     status = wl_write_json(ds, vl);
   }
 
-  return (status);
+  return status;
 }
 
 static int wl_config(oconfig_item_t *ci) /* {{{ */
 {
-  _Bool format_seen = 0;
+  bool format_seen = false;
 
   for (int i = 0; i < ci->children_num; i++) {
     oconfig_item_t *child = ci->children + i;
@@ -110,7 +110,7 @@ static int wl_config(oconfig_item_t *ci) /* {{{ */
       if (format_seen) {
         WARNING("write_log plugin: Redefining option `%s'.", child->key);
       }
-      format_seen = 1;
+      format_seen = true;
 
       if (strcasecmp("Graphite", str) == 0)
         wl_format = WL_FORMAT_GRAPHITE;
@@ -119,16 +119,16 @@ static int wl_config(oconfig_item_t *ci) /* {{{ */
       else {
         ERROR("write_log plugin: Unknown format `%s' for option `%s'.", str,
               child->key);
-        return (-EINVAL);
+        return -EINVAL;
       }
     } else {
       ERROR("write_log plugin: Invalid configuration option: `%s'.",
             child->key);
-      return (-EINVAL);
+      return -EINVAL;
     }
   }
 
-  return (0);
+  return 0;
 } /* }}} int wl_config */
 
 void module_register(void) {
@@ -136,5 +136,3 @@ void module_register(void) {
   /* If config is supplied, the global wl_format will be set. */
   plugin_register_write("write_log", wl_write, NULL);
 }
-
-/* vim: set sw=4 ts=4 sts=4 tw=78 et : */

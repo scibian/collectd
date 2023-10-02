@@ -25,8 +25,8 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 
 #if HAVE_MACH_MACH_TYPES_H
 #include <mach/mach_types.h>
@@ -72,9 +72,9 @@
 int battery_read_statefs(
     void); /* defined in battery_statefs; used by StateFS backend */
 
-static _Bool report_percent = 0;
-static _Bool report_degraded = 0;
-static _Bool query_statefs = 0;
+static bool report_percent;
+static bool report_degraded;
+static bool query_statefs;
 
 static void battery_submit2(char const *plugin_instance, /* {{{ */
                             char const *type, char const *type_instance,
@@ -147,13 +147,13 @@ static double dict_get_double(CFDictionaryRef dict,
                                       kCFStringEncodingASCII);
   if (key_obj == NULL) {
     DEBUG("CFStringCreateWithCString (%s) failed.\n", key_string);
-    return (NAN);
+    return NAN;
   }
 
   if ((val_obj = CFDictionaryGetValue(dict, key_obj)) == NULL) {
     DEBUG("CFDictionaryGetValue (%s) failed.", key_string);
     CFRelease(key_obj);
-    return (NAN);
+    return NAN;
   }
   CFRelease(key_obj);
 
@@ -166,10 +166,10 @@ static double dict_get_double(CFDictionaryRef dict,
     }
   } else {
     DEBUG("CFGetTypeID (val_obj) = %i", (int)CFGetTypeID(val_obj));
-    return (NAN);
+    return NAN;
   }
 
-  return (val_double);
+  return val_double;
 } /* }}} double dict_get_double */
 
 #if HAVE_IOKIT_PS_IOPOWERSOURCES_H
@@ -334,9 +334,9 @@ static int battery_read(void) /* {{{ */
   if (!isnan(voltage))
     battery_submit("0", "voltage", voltage);
 
-  return (0);
+  return 0;
 } /* }}} int battery_read */
-/* #endif HAVE_IOKIT_IOKITLIB_H || HAVE_IOKIT_PS_IOPOWERSOURCES_H */
+  /* #endif HAVE_IOKIT_IOKITLIB_H || HAVE_IOKIT_PS_IOPOWERSOURCES_H */
 
 #elif KERNEL_LINUX
 /* Reads a file which contains only a number (and optionally a trailing
@@ -347,8 +347,7 @@ static int sysfs_file_to_buffer(char const *dir, /* {{{ */
   char filename[PATH_MAX];
   int status;
 
-  ssnprintf(filename, sizeof(filename), "%s/%s/%s", dir, power_supply,
-            basename);
+  snprintf(filename, sizeof(filename), "%s/%s/%s", dir, power_supply, basename);
 
   status = (int)read_file_contents(filename, buffer, buffer_size - 1);
   if (status < 0)
@@ -371,9 +370,9 @@ static int sysfs_file_to_gauge(char const *dir, /* {{{ */
   status =
       sysfs_file_to_buffer(dir, power_supply, basename, buffer, sizeof(buffer));
   if (status != 0)
-    return (status);
+    return status;
 
-  return (strtogauge(buffer, ret_value));
+  return strtogauge(buffer, ret_value);
 } /* }}} sysfs_file_to_gauge */
 
 static int read_sysfs_capacity(char const *dir, /* {{{ */
@@ -387,21 +386,21 @@ static int read_sysfs_capacity(char const *dir, /* {{{ */
   status =
       sysfs_file_to_gauge(dir, power_supply, "energy_now", &capacity_charged);
   if (status != 0)
-    return (status);
+    return status;
 
   status =
       sysfs_file_to_gauge(dir, power_supply, "energy_full", &capacity_full);
   if (status != 0)
-    return (status);
+    return status;
 
   status = sysfs_file_to_gauge(dir, power_supply, "energy_full_design",
                                &capacity_design);
   if (status != 0)
-    return (status);
+    return status;
 
   submit_capacity(plugin_instance, capacity_charged * SYSFS_FACTOR,
                   capacity_full * SYSFS_FACTOR, capacity_design * SYSFS_FACTOR);
-  return (0);
+  return 0;
 } /* }}} int read_sysfs_capacity */
 
 static int read_sysfs_callback(char const *dir, /* {{{ */
@@ -411,21 +410,21 @@ static int read_sysfs_callback(char const *dir, /* {{{ */
   char const *plugin_instance;
   char buffer[32];
   gauge_t v = NAN;
-  _Bool discharging = 0;
+  bool discharging = false;
   int status;
 
   /* Ignore non-battery directories, such as AC power. */
   status =
       sysfs_file_to_buffer(dir, power_supply, "type", buffer, sizeof(buffer));
   if (status != 0)
-    return (0);
+    return 0;
   if (strcasecmp("Battery", buffer) != 0)
-    return (0);
+    return 0;
 
   (void)sysfs_file_to_buffer(dir, power_supply, "status", buffer,
                              sizeof(buffer));
   if (strcasecmp("Discharging", buffer) == 0)
-    discharging = 1;
+    discharging = true;
 
   /* FIXME: This is a dirty hack for backwards compatibility: The battery
    * plugin, for a very long time, has had the plugin_instance
@@ -451,7 +450,7 @@ static int read_sysfs_callback(char const *dir, /* {{{ */
   if (sysfs_file_to_gauge(dir, power_supply, "voltage_now", &v) == 0)
     battery_submit(plugin_instance, "voltage", v * SYSFS_FACTOR);
 
-  return (0);
+  return 0;
 } /* }}} int read_sysfs_callback */
 
 static int read_sysfs(void) /* {{{ */
@@ -460,12 +459,12 @@ static int read_sysfs(void) /* {{{ */
   int battery_counter = 0;
 
   if (access(SYSFS_PATH, R_OK) != 0)
-    return (ENOENT);
+    return ENOENT;
 
   status = walk_directory(SYSFS_PATH, read_sysfs_callback,
                           /* user_data = */ &battery_counter,
                           /* include hidden */ 0);
-  return (status);
+  return status;
 } /* }}} int read_sysfs */
 
 static int read_acpi_full_capacity(char const *dir, /* {{{ */
@@ -479,10 +478,10 @@ static int read_acpi_full_capacity(char const *dir, /* {{{ */
 
   FILE *fh;
 
-  ssnprintf(filename, sizeof(filename), "%s/%s/info", dir, power_supply);
+  snprintf(filename, sizeof(filename), "%s/%s/info", dir, power_supply);
   fh = fopen(filename, "r");
   if (fh == NULL)
-    return (errno);
+    return errno;
 
   /* last full capacity:      40090 mWh */
   while (fgets(buffer, sizeof(buffer), fh) != NULL) {
@@ -511,7 +510,7 @@ static int read_acpi_full_capacity(char const *dir, /* {{{ */
   }
 
   fclose(fh);
-  return (0);
+  return 0;
 } /* }}} int read_acpi_full_capacity */
 
 static int read_acpi_callback(char const *dir, /* {{{ */
@@ -523,8 +522,8 @@ static int read_acpi_callback(char const *dir, /* {{{ */
   gauge_t capacity_charged = NAN;
   gauge_t capacity_full = NAN;
   gauge_t capacity_design = NAN;
-  _Bool charging = 0;
-  _Bool is_current = 0;
+  bool charging = false;
+  bool is_current = false;
 
   char const *plugin_instance;
   char filename[PATH_MAX];
@@ -532,13 +531,13 @@ static int read_acpi_callback(char const *dir, /* {{{ */
 
   FILE *fh;
 
-  ssnprintf(filename, sizeof(filename), "%s/%s/state", dir, power_supply);
+  snprintf(filename, sizeof(filename), "%s/%s/state", dir, power_supply);
   fh = fopen(filename, "r");
   if (fh == NULL) {
     if ((errno == EAGAIN) || (errno == EINTR) || (errno == ENOENT))
-      return (0);
+      return 0;
     else
-      return (errno);
+      return errno;
   }
 
   /*
@@ -561,9 +560,9 @@ static int read_acpi_callback(char const *dir, /* {{{ */
     if ((strcmp(fields[0], "charging") == 0) &&
         (strcmp(fields[1], "state:") == 0)) {
       if (strcmp(fields[2], "charging") == 0)
-        charging = 1;
+        charging = true;
       else
-        charging = 0;
+        charging = false;
       continue;
     }
 
@@ -576,7 +575,7 @@ static int read_acpi_callback(char const *dir, /* {{{ */
       strtogauge(fields[2], &power);
 
       if ((numfields >= 4) && (strcmp("mA", fields[3]) == 0))
-        is_current = 1;
+        is_current = true;
     } else if ((strcmp(fields[0], "remaining") == 0) &&
                (strcmp(fields[1], "capacity:") == 0))
       strtogauge(fields[2], &capacity_charged);
@@ -617,12 +616,12 @@ static int read_acpi(void) /* {{{ */
   int battery_counter = 0;
 
   if (access(PROC_ACPI_PATH, R_OK) != 0)
-    return (ENOENT);
+    return ENOENT;
 
   status = walk_directory(PROC_ACPI_PATH, read_acpi_callback,
                           /* user_data = */ &battery_counter,
                           /* include hidden */ 0);
-  return (status);
+  return status;
 } /* }}} int read_acpi */
 
 static int read_pmu(void) /* {{{ */
@@ -641,11 +640,11 @@ static int read_pmu(void) /* {{{ */
     gauge_t voltage = NAN;
     gauge_t charge = NAN;
 
-    ssnprintf(filename, sizeof(filename), PROC_PMU_PATH_FORMAT, i);
+    snprintf(filename, sizeof(filename), PROC_PMU_PATH_FORMAT, i);
     if (access(filename, R_OK) != 0)
       break;
 
-    ssnprintf(plugin_instance, sizeof(plugin_instance), "%i", i);
+    snprintf(plugin_instance, sizeof(plugin_instance), "%i", i);
 
     fh = fopen(filename, "r");
     if (fh == NULL) {
@@ -654,7 +653,7 @@ static int read_pmu(void) /* {{{ */
       else if ((errno == EAGAIN) || (errno == EINTR))
         continue;
       else
-        return (errno);
+        return errno;
     }
 
     while (fgets(buffer, sizeof(buffer), fh) != NULL) {
@@ -682,8 +681,8 @@ static int read_pmu(void) /* {{{ */
   }
 
   if (i == 0)
-    return (ENOENT);
-  return (0);
+    return ENOENT;
+  return 0;
 } /* }}} int read_pmu */
 
 static int battery_read(void) /* {{{ */
@@ -696,20 +695,20 @@ static int battery_read(void) /* {{{ */
   DEBUG("battery plugin: Trying sysfs ...");
   status = read_sysfs();
   if (status == 0)
-    return (0);
+    return 0;
 
   DEBUG("battery plugin: Trying acpi ...");
   status = read_acpi();
   if (status == 0)
-    return (0);
+    return 0;
 
   DEBUG("battery plugin: Trying pmu ...");
   status = read_pmu();
   if (status == 0)
-    return (0);
+    return 0;
 
   ERROR("battery plugin: All available input methods failed.");
-  return (-1);
+  return -1;
 } /* }}} int battery_read */
 #endif /* KERNEL_LINUX */
 
@@ -729,7 +728,7 @@ static int battery_config(oconfig_item_t *ci) {
               child->key);
   }
 
-  return (0);
+  return 0;
 } /* }}} int battery_config */
 
 void module_register(void) {

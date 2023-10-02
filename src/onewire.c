@@ -21,9 +21,9 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
-#include "utils_ignorelist.h"
+#include "utils/common/common.h"
+#include "utils/ignorelist/ignorelist.h"
 
 #include <owcapi.h>
 #include <regex.h>
@@ -86,9 +86,9 @@ static ow_family_features_t ow_family_features[] = {
      /* features_num = */ 1}};
 static int ow_family_features_num = STATIC_ARRAY_SIZE(ow_family_features);
 
-static char *device_g = NULL;
-static cdtime_t ow_interval = 0;
-static _Bool direct_access = 0;
+static char *device_g;
+static cdtime_t ow_interval;
+static bool direct_access;
 
 static const char *config_keys[] = {"Device", "IgnoreSelected", "Sensor",
                                     "Interval"};
@@ -96,7 +96,7 @@ static int config_keys_num = STATIC_ARRAY_SIZE(config_keys);
 
 static ignorelist_t *sensor_list;
 
-static _Bool regex_direct_initialized = 0;
+static bool regex_direct_initialized;
 static regex_t regex_direct;
 
 /**
@@ -109,7 +109,7 @@ typedef struct direct_access_element_s {
   struct direct_access_element_s *next; /**< Next in the list */
 } direct_access_element_t;
 
-static direct_access_element_t *direct_list = NULL;
+static direct_access_element_t *direct_list;
 
 /* ===================================================================================
  */
@@ -123,7 +123,7 @@ static int timeval_subtract(struct timeval *result, struct timeval *t2,
   result->tv_sec = diff / 1000000;
   result->tv_usec = diff % 1000000;
 
-  return (diff < 0);
+  return diff < 0;
 }
 #endif /* COLLECT_DEBUG */
 
@@ -169,9 +169,9 @@ static int direct_list_insert(const char *config) {
     if (regcomp(&regex_direct, regexp_to_match, REG_EXTENDED)) {
       ERROR("onewire plugin: Cannot compile regex");
       direct_list_element_free(element);
-      return (1);
+      return 1;
     }
-    regex_direct_initialized = 1;
+    regex_direct_initialized = true;
     DEBUG("onewire plugin: Compiled regex!!");
   }
 
@@ -242,11 +242,11 @@ static int cow_load_config(const char *key, const char *value) {
 
       if (ignorelist_add(sensor_list, value)) {
         ERROR("onewire plugin: Cannot add value to ignorelist.");
-        return (1);
+        return 1;
       }
     } else {
       DEBUG("onewire plugin: %s is a direct access", value);
-      direct_access = 1;
+      direct_access = true;
     }
   } else if (strcasecmp(key, "IgnoreSelected") == 0) {
     ignorelist_set_invert(sensor_list, 1);
@@ -257,7 +257,7 @@ static int cow_load_config(const char *key, const char *value) {
     temp = strdup(value);
     if (temp == NULL) {
       ERROR("onewire plugin: strdup failed.");
-      return (1);
+      return 1;
     }
     sfree(device_g);
     device_g = temp;
@@ -269,10 +269,10 @@ static int cow_load_config(const char *key, const char *value) {
     else
       ERROR("onewire plugin: Invalid `Interval' setting: %s", value);
   } else {
-    return (-1);
+    return -1;
   }
 
-  return (0);
+  return 0;
 }
 
 static int cow_read_values(const char *path, const char *name,
@@ -293,14 +293,13 @@ static int cow_read_values(const char *path, const char *name,
     char *buffer;
     size_t buffer_size;
     int status;
-    char errbuf[1024];
 
     char file[4096];
     char *endptr;
 
-    snprintf(file, sizeof(file), "%s/%s", path,
-             family_info->features[i].filename);
-    file[sizeof(file) - 1] = 0;
+    ssnprintf(file, sizeof(file), "%s/%s", path,
+              family_info->features[i].filename);
+    file[sizeof(file) - 1] = '\0';
 
     buffer = NULL;
     buffer_size = 0;
@@ -308,9 +307,8 @@ static int cow_read_values(const char *path, const char *name,
     status = OW_get(file, &buffer, &buffer_size);
     if (status < 0) {
       ERROR("onewire plugin: OW_get (%s/%s) failed. error = %s;", path,
-            family_info->features[i].filename,
-            sstrerror(errno, errbuf, sizeof(errbuf)));
-      return (-1);
+            family_info->features[i].filename, STRERRNO);
+      return -1;
     }
     DEBUG("Read onewire device %s as %s", file, buffer);
 
@@ -334,7 +332,7 @@ static int cow_read_values(const char *path, const char *name,
     free(buffer);
   } /* for (i = 0; i < features_num; i++) */
 
-  return ((success > 0) ? 0 : -1);
+  return (success > 0) ? 0 : -1;
 } /* int cow_read_values */
 
 /* Forward declaration so the recursion below works */
@@ -358,14 +356,13 @@ static int cow_read_ds2409(const char *path) {
   if ((status > 0) && (status < (int)sizeof(subpath)))
     cow_read_bus(subpath);
 
-  return (0);
+  return 0;
 } /* int cow_read_ds2409 */
 
 static int cow_read_bus(const char *path) {
   char *buffer;
   size_t buffer_size;
   int status;
-  char errbuf[1024];
 
   char *buffer_ptr;
   char *dummy;
@@ -374,9 +371,8 @@ static int cow_read_bus(const char *path) {
 
   status = OW_get(path, &buffer, &buffer_size);
   if (status < 0) {
-    ERROR("onewire plugin: OW_get (%s) failed. error = %s;", path,
-          sstrerror(errno, errbuf, sizeof(errbuf)));
-    return (-1);
+    ERROR("onewire plugin: OW_get (%s) failed. error = %s;", path, STRERRNO);
+    return -1;
   }
   DEBUG("onewire plugin: OW_get (%s) returned: %s", path, buffer);
 
@@ -415,7 +411,7 @@ static int cow_read_bus(const char *path) {
   } /* while (strtok_r) */
 
   free(buffer);
-  return (0);
+  return 0;
 } /* int cow_read_bus */
 
 /* ===================================================================================
@@ -426,7 +422,6 @@ static int cow_simple_read(void) {
   char *buffer;
   size_t buffer_size;
   int status;
-  char errbuf[1024];
   char *endptr;
   direct_access_element_t *traverse;
 
@@ -438,8 +433,8 @@ static int cow_simple_read(void) {
     status = OW_get(traverse->path, &buffer, &buffer_size);
     if (status < 0) {
       ERROR("onewire plugin: OW_get (%s) failed. status = %s;", traverse->path,
-            sstrerror(errno, errbuf, sizeof(errbuf)));
-      return (-1);
+            STRERRNO);
+      return -1;
     }
     DEBUG("onewire plugin: Read onewire device %s as %s", traverse->path,
           buffer);
@@ -502,31 +497,29 @@ static int cow_shutdown(void) {
     regfree(&regex_direct);
   }
 
-  return (0);
+  return 0;
 } /* int cow_shutdown */
 
 static int cow_init(void) {
   int status;
-  char errbuf[1024];
 
   if (device_g == NULL) {
     ERROR("onewire plugin: cow_init: No device configured.");
-    return (-1);
+    return -1;
   }
 
   DEBUG("onewire plugin: about to init device <%s>.", device_g);
   status = (int)OW_init(device_g);
   if (status != 0) {
-    ERROR("onewire plugin: OW_init(%s) failed: %s.", device_g,
-          sstrerror(errno, errbuf, sizeof(errbuf)));
-    return (1);
+    ERROR("onewire plugin: OW_init(%s) failed: %s.", device_g, STRERRNO);
+    return 1;
   }
 
   plugin_register_complex_read(/* group = */ NULL, "onewire", cow_read,
                                ow_interval, /* user data = */ NULL);
   plugin_register_shutdown("onewire", cow_shutdown);
 
-  return (0);
+  return 0;
 } /* int cow_init */
 
 void module_register(void) {
@@ -534,5 +527,3 @@ void module_register(void) {
   plugin_register_config("onewire", cow_load_config, config_keys,
                          config_keys_num);
 }
-
-/* vim: set sw=2 sts=2 ts=8 et fdm=marker cindent : */

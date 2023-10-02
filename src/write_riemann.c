@@ -30,8 +30,8 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 #include "utils_cache.h"
 #include "utils_complain.h"
 #include "write_riemann_threshold.h"
@@ -48,11 +48,11 @@ struct riemann_host {
   char *name;
   char *event_service_prefix;
   pthread_mutex_t lock;
-  _Bool batch_mode;
-  _Bool notifications;
-  _Bool check_thresholds;
-  _Bool store_rates;
-  _Bool always_append_ds;
+  bool batch_mode;
+  bool notifications;
+  bool check_thresholds;
+  bool store_rates;
+  bool always_append_ds;
   char *node;
   int port;
   riemann_client_type_t client_type;
@@ -125,12 +125,12 @@ static int wrr_connect(struct riemann_host *host) /* {{{ */
 static int wrr_disconnect(struct riemann_host *host) /* {{{ */
 {
   if (!host->client)
-    return (0);
+    return 0;
 
   riemann_client_free(host->client);
   host->client = NULL;
 
-  return (0);
+  return 0;
 } /* }}} int wrr_disconnect */
 
 /**
@@ -181,9 +181,7 @@ static int wrr_send(struct riemann_host *host, riemann_message_t *msg) {
   return status;
 }
 
-static riemann_message_t *
-wrr_notification_to_message(struct riemann_host *host, /* {{{ */
-                            notification_t const *n) {
+static riemann_message_t *wrr_notification_to_message(notification_t const *n) {
   riemann_message_t *msg;
   riemann_event_t *event;
   char service_buffer[6 * DATA_MAX_NAME_LEN];
@@ -213,6 +211,11 @@ wrr_notification_to_message(struct riemann_host *host, /* {{{ */
       "notification", NULL, RIEMANN_EVENT_FIELD_STATE, severity,
       RIEMANN_EVENT_FIELD_SERVICE, &service_buffer[1],
       RIEMANN_EVENT_FIELD_NONE);
+
+#if RCC_VERSION_NUMBER >= 0x010A00
+  riemann_event_set(event, RIEMANN_EVENT_FIELD_TIME_MICROS,
+                    (int64_t)CDTIME_T_TO_US(n->time));
+#endif
 
   if (n->host[0] != 0)
     riemann_event_string_attribute_add(event, "host", n->host);
@@ -259,14 +262,14 @@ wrr_notification_to_message(struct riemann_host *host, /* {{{ */
   if (msg == NULL) {
     ERROR("write_riemann plugin: riemann_message_create_with_events() failed.");
     riemann_event_free(event);
-    return (NULL);
+    return NULL;
   }
 
   DEBUG("write_riemann plugin: Successfully created message for notification: "
         "host = \"%s\", service = \"%s\", state = \"%s\"",
         event->host, event->service, event->state);
-  return (msg);
-} /* }}} riemann_message_t *wrr_notification_to_message */
+  return msg;
+}
 
 static riemann_event_t *
 wrr_value_to_event(struct riemann_host const *host, /* {{{ */
@@ -280,7 +283,7 @@ wrr_value_to_event(struct riemann_host const *host, /* {{{ */
   event = riemann_event_new();
   if (event == NULL) {
     ERROR("write_riemann plugin: riemann_event_new() failed.");
-    return (NULL);
+    return NULL;
   }
 
   format_name(name_buffer, sizeof(name_buffer),
@@ -309,6 +312,11 @@ wrr_value_to_event(struct riemann_host const *host, /* {{{ */
       RIEMANN_EVENT_FIELD_STRING_ATTRIBUTES, "plugin", vl->plugin, "type",
       vl->type, "ds_name", ds->ds[index].name, NULL,
       RIEMANN_EVENT_FIELD_SERVICE, service_buffer, RIEMANN_EVENT_FIELD_NONE);
+
+#if RCC_VERSION_NUMBER >= 0x010A00
+  riemann_event_set(event, RIEMANN_EVENT_FIELD_TIME_MICROS,
+                    (int64_t)CDTIME_T_TO_US(vl->time));
+#endif
 
   if (host->check_thresholds) {
     const char *state = NULL;
@@ -353,7 +361,7 @@ wrr_value_to_event(struct riemann_host const *host, /* {{{ */
   {
     char ds_index[DATA_MAX_NAME_LEN];
 
-    ssnprintf(ds_index, sizeof(ds_index), "%zu", index);
+    ssnprintf(ds_index, sizeof(ds_index), "%" PRIsz, index);
     riemann_event_string_attribute_add(event, "ds_index", ds_index);
   }
 
@@ -385,10 +393,27 @@ wrr_value_to_event(struct riemann_host const *host, /* {{{ */
                       RIEMANN_EVENT_FIELD_NONE);
   }
 
+  if (vl->meta) {
+    char **toc;
+    int n = meta_data_toc(vl->meta, &toc);
+
+    for (int i = 0; i < n; i++) {
+      char *key = toc[i];
+      char *value;
+
+      if (0 == meta_data_as_string(vl->meta, key, &value)) {
+        riemann_event_string_attribute_add(event, key, value);
+        free(value);
+      }
+    }
+
+    free(toc);
+  }
+
   DEBUG("write_riemann plugin: Successfully created message for metric: "
         "host = \"%s\", service = \"%s\"",
         event->host, event->service);
-  return (event);
+  return event;
 } /* }}} riemann_event_t *wrr_value_to_event */
 
 static riemann_message_t *
@@ -403,7 +428,7 @@ wrr_value_list_to_message(struct riemann_host const *host, /* {{{ */
   msg = riemann_message_new();
   if (msg == NULL) {
     ERROR("write_riemann plugin: riemann_message_new failed.");
-    return (NULL);
+    return NULL;
   }
 
   if (host->store_rates) {
@@ -411,7 +436,7 @@ wrr_value_list_to_message(struct riemann_host const *host, /* {{{ */
     if (rates == NULL) {
       ERROR("write_riemann plugin: uc_get_rate failed.");
       riemann_message_free(msg);
-      return (NULL);
+      return NULL;
     }
   }
 
@@ -422,13 +447,13 @@ wrr_value_list_to_message(struct riemann_host const *host, /* {{{ */
     if (event == NULL) {
       riemann_message_free(msg);
       sfree(rates);
-      return (NULL);
+      return NULL;
     }
     riemann_message_append_events(msg, event, NULL);
   }
 
   sfree(rates);
-  return (msg);
+  return msg;
 } /* }}} riemann_message_t *wrr_value_list_to_message */
 
 /*
@@ -459,7 +484,7 @@ static int wrr_batch_flush(cdtime_t timeout,
   int status;
 
   if (user_data == NULL)
-    return (-EINVAL);
+    return -EINVAL;
 
   host = user_data->data;
   pthread_mutex_lock(&host->lock);
@@ -537,9 +562,9 @@ static int wrr_notification(const notification_t *n, user_data_t *ud) /* {{{ */
   /*
    * Never batch for notifications, send them ASAP
    */
-  msg = wrr_notification_to_message(host, n);
+  msg = wrr_notification_to_message(n);
   if (msg == NULL)
-    return (-1);
+    return -1;
 
   status = wrr_send(host, msg);
   if (status != 0)
@@ -552,7 +577,7 @@ static int wrr_notification(const notification_t *n, user_data_t *ud) /* {{{ */
               "write_riemann plugin: riemann_client_send succeeded");
 
   riemann_message_free(msg);
-  return (status);
+  return status;
 } /* }}} int wrr_notification */
 
 static int wrr_write(const data_set_t *ds, /* {{{ */
@@ -575,7 +600,7 @@ static int wrr_write(const data_set_t *ds, /* {{{ */
   } else {
     msg = wrr_value_list_to_message(host, ds, vl, statuses);
     if (msg == NULL)
-      return (-1);
+      return -1;
 
     status = wrr_send(host, msg);
 
@@ -601,6 +626,7 @@ static void wrr_free(void *p) /* {{{ */
 
   wrr_disconnect(host);
 
+  pthread_mutex_lock(&host->lock);
   pthread_mutex_destroy(&host->lock);
   sfree(host);
 } /* }}} void wrr_free */
@@ -622,11 +648,11 @@ static int wrr_config_node(oconfig_item_t *ci) /* {{{ */
   host->reference_count = 1;
   host->node = NULL;
   host->port = 0;
-  host->notifications = 1;
-  host->check_thresholds = 0;
-  host->store_rates = 1;
-  host->always_append_ds = 0;
-  host->batch_mode = 1;
+  host->notifications = true;
+  host->check_thresholds = false;
+  host->store_rates = true;
+  host->always_append_ds = false;
+  host->batch_mode = true;
   host->batch_max = RIEMANN_BATCH_MAX; /* typical MSS */
   host->batch_init = cdtime();
   host->batch_timeout = 0;
@@ -691,21 +717,13 @@ static int wrr_config_node(oconfig_item_t *ci) /* {{{ */
     } else if (strcasecmp("Port", child->key) == 0) {
       host->port = cf_util_get_port_number(child);
       if (host->port == -1) {
-        ERROR("write_riemann plugin: Invalid argument "
-              "configured for the \"Port\" "
-              "option.");
         break;
       }
     } else if (strcasecmp("Protocol", child->key) == 0) {
       char tmp[16];
       status = cf_util_get_string_buffer(child, tmp, sizeof(tmp));
-      if (status != 0) {
-        ERROR("write_riemann plugin: cf_util_get_"
-              "string_buffer failed with "
-              "status %i.",
-              status);
+      if (status != 0)
         break;
-      }
 
       if (strcasecmp("UDP", tmp) == 0)
         host->client_type = RIEMANN_CLIENT_UDP;
@@ -721,31 +739,16 @@ static int wrr_config_node(oconfig_item_t *ci) /* {{{ */
                 tmp);
     } else if (strcasecmp("TLSCAFile", child->key) == 0) {
       status = cf_util_get_string(child, &host->tls_ca_file);
-      if (status != 0) {
-        ERROR("write_riemann plugin: cf_util_get_"
-              "string_buffer failed with "
-              "status %i.",
-              status);
+      if (status != 0)
         break;
-      }
     } else if (strcasecmp("TLSCertFile", child->key) == 0) {
       status = cf_util_get_string(child, &host->tls_cert_file);
-      if (status != 0) {
-        ERROR("write_riemann plugin: cf_util_get_"
-              "string_buffer failed with "
-              "status %i.",
-              status);
+      if (status != 0)
         break;
-      }
     } else if (strcasecmp("TLSKeyFile", child->key) == 0) {
       status = cf_util_get_string(child, &host->tls_key_file);
-      if (status != 0) {
-        ERROR("write_riemann plugin: cf_util_get_"
-              "string_buffer failed with "
-              "status %i.",
-              status);
+      if (status != 0)
         break;
-      }
     } else if (strcasecmp("StoreRates", child->key) == 0) {
       status = cf_util_get_boolean(child, &host->store_rates);
       if (status != 0)
@@ -827,7 +830,7 @@ static int wrr_config_node(oconfig_item_t *ci) /* {{{ */
      * holding a reference. */
     pthread_mutex_unlock(&host->lock);
     wrr_free(host);
-    return (-1);
+    return -1;
   }
 
   host->reference_count--;
@@ -853,21 +856,21 @@ static int wrr_config(oconfig_item_t *ci) /* {{{ */
 
       if (child->values_num != 2) {
         WARNING("riemann attributes need both a key and a value.");
-        return (-1);
+        return -1;
       }
       if (child->values[0].type != OCONFIG_TYPE_STRING ||
           child->values[1].type != OCONFIG_TYPE_STRING) {
         WARNING("riemann attribute needs string arguments.");
-        return (-1);
+        return -1;
       }
       if ((key = strdup(child->values[0].value.string)) == NULL) {
         WARNING("cannot allocate memory for attribute key.");
-        return (-1);
+        return -1;
       }
       if ((val = strdup(child->values[1].value.string)) == NULL) {
         WARNING("cannot allocate memory for attribute value.");
         sfree(key);
-        return (-1);
+        return -1;
       }
       strarray_add(&riemann_attrs, &riemann_attrs_num, key);
       strarray_add(&riemann_attrs, &riemann_attrs_num, val);
@@ -889,11 +892,9 @@ static int wrr_config(oconfig_item_t *ci) /* {{{ */
               child->key);
     }
   }
-  return (0);
+  return 0;
 } /* }}} int wrr_config */
 
 void module_register(void) {
   plugin_register_complex_config("write_riemann", wrr_config);
 }
-
-/* vim: set sw=8 sts=8 ts=8 noet : */

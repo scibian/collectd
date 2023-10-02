@@ -30,8 +30,8 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 
 #include <glib.h>
 #include <libnotify/notify.h>
@@ -102,7 +102,7 @@ static int c_notify(const notification_t *n,
 
   notification = notify_notification_new(summary, n->message, NULL
 #if NOTIFY_CHECK_VERSION(0, 7, 0)
-                                         );
+  );
 #else
                                          ,
                                          NULL);
@@ -166,5 +166,3 @@ void module_register(void) {
   plugin_register_init("notify_desktop", c_notify_init);
   return;
 } /* module_register */
-
-/* vim: set sw=4 ts=4 tw=78 noexpandtab : */

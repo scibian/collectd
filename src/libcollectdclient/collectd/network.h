@@ -27,10 +27,14 @@
 #ifndef LIBCOLLECTDCLIENT_NETWORK_H
 #define LIBCOLLECTDCLIENT_NETWORK_H 1
 
+#include "collectd/client.h"
+
 #include <inttypes.h>
 #include <stdint.h>
 
-#include "client.h"
+#ifdef WIN32
+extern unsigned int if_nametoindex(const char *interface_name);
+#endif
 
 #define NET_DEFAULT_V4_ADDR "239.192.74.66"
 #define NET_DEFAULT_V6_ADDR "ff18::efc0:4a42"
@@ -60,7 +64,7 @@ int lcc_server_destroy(lcc_network_t *net, lcc_server_t *srv);
 
 /* Configure servers */
 int lcc_server_set_ttl(lcc_server_t *srv, uint8_t ttl);
-int lcc_server_set_interface(lcc_server_t *srv, char const *interface);
+int lcc_server_set_interface(lcc_server_t *srv, char const *iface);
 int lcc_server_set_security_level(lcc_server_t *srv, lcc_security_level_t level,
                                   const char *username, const char *password);
 
@@ -73,5 +77,4 @@ int lcc_network_notification_send (lcc_network_t *net,
     const lcc_notification_t *notif);
 #endif
 
-/* vim: set sw=2 sts=2 et : */
 #endif /* LIBCOLLECTDCLIENT_NETWORK_H */

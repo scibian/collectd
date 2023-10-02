@@ -29,12 +29,9 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 
-#if HAVE_STDINT_H
-#include <stdint.h>
-#endif
 #if HAVE_NETDB_H
 #include <netdb.h>
 #endif
@@ -59,17 +56,17 @@ static const char *config_keys[] = {"Host", "Port", "ReverseLookups",
                                     "IncludeUnitID"};
 static int config_keys_num = STATIC_ARRAY_SIZE(config_keys);
 
-static _Bool do_reverse_lookups = 1;
+static bool do_reverse_lookups = true;
 
 /* This option only exists for backward compatibility. If it is false and two
  * ntpd peers use the same refclock driver, the plugin will try to write
  * simultaneous measurements from both to the same type instance. */
-static _Bool include_unit_id = 0;
+static bool include_unit_id;
 
 #define NTPD_DEFAULT_HOST "localhost"
 #define NTPD_DEFAULT_PORT "123"
 static int sock_descr = -1;
-static char *ntpd_host = NULL;
+static char *ntpd_host;
 static char ntpd_port[16];
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -254,7 +251,7 @@ static const char *refclock_names[] = {
     "CHRONOLOG",  "DUMBCLOCK",    "ULINK_M320", "PCF",         /* 32-35 */
     "WWV_AUDIO",  "GPS_FG",       "HOPF_S",     "HOPF_P",      /* 36-39 */
     "JJY",        "TT_IRIG",      "GPS_ZYFER",  "GPS_RIPENCC", /* 40-43 */
-    "NEOCLK4X"                                                 /* 44    */
+    "NEOCLK4X",   "PCI_TSYNC",    "GPSD_JSON"                  /* 44-46 */
 };
 static size_t refclock_names_num = STATIC_ARRAY_SIZE(refclock_names);
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -266,28 +263,28 @@ static int ntpd_config(const char *key, const char *value) {
     if (ntpd_host != NULL)
       free(ntpd_host);
     if ((ntpd_host = strdup(value)) == NULL)
-      return (1);
+      return 1;
   } else if (strcasecmp(key, "Port") == 0) {
     int port = (int)(atof(value));
     if ((port > 0) && (port <= 65535))
-      ssnprintf(ntpd_port, sizeof(ntpd_port), "%i", port);
+      snprintf(ntpd_port, sizeof(ntpd_port), "%i", port);
     else
       sstrncpy(ntpd_port, value, sizeof(ntpd_port));
   } else if (strcasecmp(key, "ReverseLookups") == 0) {
     if (IS_TRUE(value))
-      do_reverse_lookups = 1;
+      do_reverse_lookups = true;
     else
-      do_reverse_lookups = 0;
+      do_reverse_lookups = false;
   } else if (strcasecmp(key, "IncludeUnitID") == 0) {
     if (IS_TRUE(value))
-      include_unit_id = 1;
+      include_unit_id = true;
     else
-      include_unit_id = 0;
+      include_unit_id = false;
   } else {
-    return (-1);
+    return -1;
   }
 
-  return (0);
+  return 0;
 }
 
 static void ntpd_submit(const char *type, const char *type_inst,
@@ -322,7 +319,7 @@ static int ntpd_connect(void) {
   int status;
 
   if (sock_descr >= 0)
-    return (sock_descr);
+    return sock_descr;
 
   DEBUG("Opening a new socket");
 
@@ -340,11 +337,9 @@ static int ntpd_connect(void) {
                               .ai_socktype = SOCK_DGRAM};
 
   if ((status = getaddrinfo(host, port, &ai_hints, &ai_list)) != 0) {
-    char errbuf[1024];
     ERROR("ntpd plugin: getaddrinfo (%s, %s): %s", host, port,
-          (status == EAI_SYSTEM) ? sstrerror(errno, errbuf, sizeof(errbuf))
-                                 : gai_strerror(status));
-    return (-1);
+          (status == EAI_SYSTEM) ? STRERRNO : gai_strerror(status));
+    return -1;
   }
 
   for (struct addrinfo *ai_ptr = ai_list; ai_ptr != NULL;
@@ -370,7 +365,7 @@ static int ntpd_connect(void) {
     ERROR("ntpd plugin: Unable to connect to server.");
   }
 
-  return (sock_descr);
+  return sock_descr;
 }
 
 /* For a description of the arguments see `ntpd_do_query' below. */
@@ -399,7 +394,7 @@ static int ntpd_receive_response(int *res_items, int *res_size, char **res_data,
   ssize_t pkt_padding; /* Padding in this packet */
 
   if ((sd = ntpd_connect()) < 0)
-    return (-1);
+    return -1;
 
   items = NULL;
   items_num = 0;
@@ -412,10 +407,8 @@ static int ntpd_receive_response(int *res_items, int *res_size, char **res_data,
   *res_data = NULL;
 
   if (gettimeofday(&time_end, NULL) < 0) {
-    char errbuf[1024];
-    ERROR("ntpd plugin: gettimeofday failed: %s",
-          sstrerror(errno, errbuf, sizeof(errbuf)));
-    return (-1);
+    ERROR("ntpd plugin: gettimeofday failed: %s", STRERRNO);
+    return -1;
   }
   time_end.tv_sec++; /* wait for a most one second */
 
@@ -424,10 +417,8 @@ static int ntpd_receive_response(int *res_items, int *res_size, char **res_data,
     struct timeval time_left;
 
     if (gettimeofday(&time_now, NULL) < 0) {
-      char errbuf[1024];
-      ERROR("ntpd plugin: gettimeofday failed: %s",
-            sstrerror(errno, errbuf, sizeof(errbuf)));
-      return (-1);
+      ERROR("ntpd plugin: gettimeofday failed: %s", STRERRNO);
+      return -1;
     }
 
     if (timeval_cmp(time_end, time_now, &time_left) <= 0)
@@ -450,10 +441,8 @@ static int ntpd_receive_response(int *res_items, int *res_size, char **res_data,
       continue;
 
     if (status < 0) {
-      char errbuf[1024];
-      ERROR("ntpd plugin: poll failed: %s",
-            sstrerror(errno, errbuf, sizeof(errbuf)));
-      return (-1);
+      ERROR("ntpd plugin: poll failed: %s", STRERRNO);
+      return -1;
     }
 
     if (status == 0) /* timeout */
@@ -469,12 +458,11 @@ static int ntpd_receive_response(int *res_items, int *res_size, char **res_data,
       continue;
 
     if (status < 0) {
-      char errbuf[1024];
-      INFO("recv(2) failed: %s", sstrerror(errno, errbuf, sizeof(errbuf)));
+      INFO("recv(2) failed: %s", STRERRNO);
       DEBUG("Closing socket #%i", sd);
       close(sd);
       sock_descr = sd = -1;
-      return (-1);
+      return -1;
     }
 
     DEBUG("recv'd %i bytes", status);
@@ -516,7 +504,7 @@ static int ntpd_receive_response(int *res_items, int *res_size, char **res_data,
     if (INFO_ERR(res.err_nitems) != 0) {
       ERROR("ntpd plugin: Received error code %i",
             (int)INFO_ERR(res.err_nitems));
-      return ((int)INFO_ERR(res.err_nitems));
+      return (int)INFO_ERR(res.err_nitems);
     }
 
     /* extract number of items in this packet and the size of these items */
@@ -596,7 +584,7 @@ static int ntpd_receive_response(int *res_items, int *res_size, char **res_data,
      * Enough with the checks. Copy the data now.
      * We start by allocating some more memory.
      */
-    DEBUG("realloc (%p, %zu)", (void *)*res_data,
+    DEBUG("realloc (%p, %" PRIsz ")", (void *)*res_data,
           (items_num + pkt_item_num) * res_item_size);
     items = realloc(*res_data, (items_num + pkt_item_num) * res_item_size);
     if (items == NULL) {
@@ -635,7 +623,7 @@ static int ntpd_receive_response(int *res_items, int *res_size, char **res_data,
       done = 1;
   } /* while (done == 0) */
 
-  return (0);
+  return 0;
 } /* int ntpd_receive_response */
 
 /* For a description of the arguments see `ntpd_do_query' below. */
@@ -650,7 +638,7 @@ static int ntpd_send_request(int req_code, int req_items, int req_size,
   assert(req_size >= 0);
 
   if ((sd = ntpd_connect()) < 0)
-    return (-1);
+    return -1;
 
   req.rm_vn_mode = RM_VN_MODE(0, 0, 0);
   req.auth_seq = AUTH_SEQ(0, 0);
@@ -672,14 +660,14 @@ static int ntpd_send_request(int req_code, int req_items, int req_size,
         (void *)req_data);
 
   status = swrite(sd, (const char *)&req, REQ_LEN_NOMAC);
-  if (status < 0) {
+  if (status != 0) {
     DEBUG("`swrite' failed. Closing socket #%i", sd);
     close(sd);
     sock_descr = sd = -1;
-    return (status);
+    return status;
   }
 
-  return (0);
+  return 0;
 }
 
 /*
@@ -704,10 +692,10 @@ static int ntpd_do_query(int req_code, int req_items, int req_size,
 
   status = ntpd_send_request(req_code, req_items, req_size, req_data);
   if (status != 0)
-    return (status);
+    return status;
 
   status = ntpd_receive_response(res_items, res_size, res_data, res_item_size);
-  return (status);
+  return status;
 }
 
 static double ntpd_read_fp(int32_t val_int) {
@@ -716,7 +704,7 @@ static double ntpd_read_fp(int32_t val_int) {
   val_int = ntohl(val_int);
   val_double = ((double)val_int) / FP_FRAC;
 
-  return (val_double);
+  return val_double;
 }
 
 static uint32_t
@@ -724,12 +712,12 @@ ntpd_get_refclock_id(struct info_peer_summary const *peer_info) {
   uint32_t addr = ntohl(peer_info->srcadr);
   uint32_t refclock_id = (addr >> 8) & 0x00FF;
 
-  return (refclock_id);
+  return refclock_id;
 }
 
 static int ntpd_get_name_from_address(char *buffer, size_t buffer_size,
                                       struct info_peer_summary const *peer_info,
-                                      _Bool do_reverse_lookup) {
+                                      bool do_reverse_lookup) {
   struct sockaddr_storage sa = {0};
   socklen_t sa_len;
   int flags = 0;
@@ -766,14 +754,12 @@ static int ntpd_get_name_from_address(char *buffer, size_t buffer_size,
                        buffer_size, NULL, 0, /* No port name */
                        flags);
   if (status != 0) {
-    char errbuf[1024];
     ERROR("ntpd plugin: getnameinfo failed: %s",
-          (status == EAI_SYSTEM) ? sstrerror(errno, errbuf, sizeof(errbuf))
-                                 : gai_strerror(status));
-    return (-1);
+          (status == EAI_SYSTEM) ? STRERRNO : gai_strerror(status));
+    return -1;
   }
 
-  return (0);
+  return 0;
 } /* ntpd_get_name_from_address */
 
 static int ntpd_get_name_refclock(char *buffer, size_t buffer_size,
@@ -782,28 +768,16 @@ static int ntpd_get_name_refclock(char *buffer, size_t buffer_size,
   uint32_t unit_id = ntohl(peer_info->srcadr) & 0x00FF;
 
   if (((size_t)refclock_id) >= refclock_names_num)
-    return (ntpd_get_name_from_address(buffer, buffer_size, peer_info,
-                                       /* do_reverse_lookup = */ 0));
+    return ntpd_get_name_from_address(buffer, buffer_size, peer_info, 0);
 
   if (include_unit_id)
-    ssnprintf(buffer, buffer_size, "%s-%" PRIu32, refclock_names[refclock_id],
-              unit_id);
+    snprintf(buffer, buffer_size, "%s-%" PRIu32, refclock_names[refclock_id],
+             unit_id);
   else
     sstrncpy(buffer, refclock_names[refclock_id], buffer_size);
 
-  return (0);
+  return 0;
 } /* int ntpd_get_name_refclock */
-
-static int ntpd_get_name(char *buffer, size_t buffer_size,
-                         struct info_peer_summary const *peer_info) {
-  uint32_t addr = ntohl(peer_info->srcadr);
-
-  if (!peer_info->v6_flag && ((addr & REFCLOCK_MASK) == REFCLOCK_ADDR))
-    return (ntpd_get_name_refclock(buffer, buffer_size, peer_info));
-  else
-    return (ntpd_get_name_from_address(buffer, buffer_size, peer_info,
-                                       do_reverse_lookups));
-} /* int ntpd_addr_to_name */
 
 static int ntpd_read(void) {
   struct info_kernel *ik;
@@ -836,12 +810,14 @@ static int ntpd_read(void) {
   if (status != 0) {
     ERROR("ntpd plugin: ntpd_do_query (REQ_GET_KERNEL) failed with status %i",
           status);
-    return (status);
+    free(ik);
+    return status;
   } else if ((ik == NULL) || (ik_num == 0) || (ik_size == 0)) {
     ERROR("ntpd plugin: ntpd_do_query returned unexpected data. "
           "(ik = %p; ik_num = %i; ik_size = %i)",
           (void *)ik, ik_num, ik_size);
-    return (-1);
+    free(ik);
+    return -1;
   }
 
   if (ntohs(ik->status) & STA_NANO) {
@@ -850,9 +826,9 @@ static int ntpd_read(void) {
   }
 
   /* kerninfo -> estimated error */
-  offset_loop = scale_loop * ((gauge_t)ntohl(ik->offset));
+  offset_loop = (gauge_t)((int32_t)ntohl(ik->offset) * scale_loop);
   freq_loop = ntpd_read_fp(ik->freq);
-  offset_error = scale_error * ((gauge_t)ntohl(ik->esterror));
+  offset_error = (gauge_t)((int32_t)ntohl(ik->esterror) * scale_error);
 
   DEBUG("info_kernel:\n"
         "  pll offset    = %.8g\n"
@@ -875,12 +851,14 @@ static int ntpd_read(void) {
     ERROR(
         "ntpd plugin: ntpd_do_query (REQ_PEER_LIST_SUM) failed with status %i",
         status);
-    return (status);
+    free(ps);
+    return status;
   } else if ((ps == NULL) || (ps_num == 0) || (ps_size == 0)) {
     ERROR("ntpd plugin: ntpd_do_query returned unexpected data. "
           "(ps = %p; ps_num = %i; ps_size = %i)",
           (void *)ps, ps_num, ps_size);
-    return (-1);
+    free(ps);
+    return -1;
   }
 
   for (int i = 0; i < ps_num; i++) {
@@ -892,9 +870,23 @@ static int ntpd_read(void) {
 
     ptr = ps + i;
 
-    status = ntpd_get_name(peername, sizeof(peername), ptr);
+    int is_refclock = !ptr->v6_flag &&
+                      ((ntohl(ptr->srcadr) & REFCLOCK_MASK) == REFCLOCK_ADDR);
+
+    if (is_refclock)
+      status = ntpd_get_name_refclock(peername, sizeof(peername), ptr);
+    else
+      status = ntpd_get_name_from_address(peername, sizeof(peername), ptr,
+                                          do_reverse_lookups);
+
     if (status != 0) {
       ERROR("ntpd plugin: Determining name of peer failed.");
+      continue;
+    }
+
+    // `0.0.0.0` hosts are caused by POOL servers
+    // see https://github.com/collectd/collectd/issues/2358
+    if (strcmp(peername, "0.0.0.0") == 0) {
       continue;
     }
 
@@ -904,6 +896,8 @@ static int ntpd_read(void) {
     M_LFPTOD(ntohl(ptr->offset_int), ntohl(ptr->offset_frc), offset);
 
     DEBUG("peer %i:\n"
+          "  is_refclock= %d\n"
+          "  refclock_id= %d\n"
           "  peername   = %s\n"
           "  srcadr     = 0x%08x\n"
           "  reach      = 0%03o\n"
@@ -912,16 +906,19 @@ static int ntpd_read(void) {
           "  offset_frc = %i\n"
           "  offset     = %f\n"
           "  dispersion = %f\n",
-          i, peername, ntohl(ptr->srcadr), ptr->reach, ntpd_read_fp(ptr->delay),
+          i, is_refclock, (is_refclock > 0) ? refclock_id : 0, peername,
+          ntohl(ptr->srcadr), ptr->reach, ntpd_read_fp(ptr->delay),
           ntohl(ptr->offset_int), ntohl(ptr->offset_frc), offset,
           ntpd_read_fp(ptr->dispersion));
 
-    if (refclock_id !=
-        1) /* not the system clock (offset will always be zero.. */
-      ntpd_submit_reach("time_offset", peername, ptr->reach, offset);
     ntpd_submit_reach("time_dispersion", peername, ptr->reach,
                       ntpd_read_fp(ptr->dispersion));
-    if (refclock_id == 0) /* not a reference clock */
+
+    /* not the system clock (offset will always be zero) */
+    if (!(is_refclock && refclock_id == 1))
+      ntpd_submit_reach("time_offset", peername, ptr->reach, offset);
+
+    if (!is_refclock) /* not a reference clock */
       ntpd_submit_reach("delay", peername, ptr->reach,
                         ntpd_read_fp(ptr->delay));
   }
@@ -929,7 +926,7 @@ static int ntpd_read(void) {
   free(ps);
   ps = NULL;
 
-  return (0);
+  return 0;
 } /* int ntpd_read */
 
 void module_register(void) {

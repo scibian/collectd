@@ -33,22 +33,11 @@
 /* do not automatically get the thread specific Perl interpreter */
 #define PERL_NO_GET_CONTEXT
 
-#define DONT_POISON_SPRINTF_YET 1
 #include "collectd.h"
-
-#undef DONT_POISON_SPRINTF_YET
-
-#if HAVE_STDBOOL_H
 #include <stdbool.h>
-#endif
 
 #include <EXTERN.h>
 #include <perl.h>
-
-#if defined(COLLECT_DEBUG) && COLLECT_DEBUG && defined(__GNUC__) && __GNUC__
-#undef sprintf
-#pragma GCC poison sprintf
-#endif
 
 #include <XSUB.h>
 
@@ -58,8 +47,8 @@
 #endif /* DEBUG */
 
 /* ... while we want the definition found in plugin.h. */
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 
 #include "filter_chain.h"
 
@@ -140,8 +129,8 @@ static int perl_flush(cdtime_t timeout, const char *identifier,
 typedef struct c_ithread_s {
   /* the thread's Perl interpreter */
   PerlInterpreter *interp;
-  _Bool running; /* thread is inside Perl interpreter */
-  _Bool shutdown;
+  bool running; /* thread is inside Perl interpreter */
+  bool shutdown;
   pthread_t pthread;
 
   /* double linked list of threads */
@@ -185,17 +174,17 @@ extern char **environ;
  * private variables
  */
 
-static _Bool register_legacy_flush = 1;
+static bool register_legacy_flush = true;
 
 /* if perl_threads != NULL perl_threads->head must
  * point to the "base" thread */
-static c_ithread_list_t *perl_threads = NULL;
+static c_ithread_list_t *perl_threads;
 
 /* the key used to store each pthread's ithread */
 static pthread_key_t perl_thr_key;
 
-static int perl_argc = 0;
-static char **perl_argv = NULL;
+static int perl_argc;
+static char **perl_argv;
 
 static char base_name[DATA_MAX_NAME_LEN] = "";
 
@@ -263,12 +252,6 @@ struct {
                  {"Collectd::NOTIF_WARNING", NOTIF_WARNING},
                  {"Collectd::NOTIF_OKAY", NOTIF_OKAY},
                  {"", 0}};
-
-struct {
-  char name[64];
-  char *var;
-} g_strings[] = {{"Collectd::hostname_g", hostname_g}, {"", NULL}};
-
 /*
  * Helper functions for data type conversion.
  */
@@ -339,12 +322,12 @@ static size_t av2value(pTHX_ char *name, AV *array, value_t *value,
 
   if (array_len < ds->ds_num) {
     log_warn("av2value: array does not contain enough elements for type "
-             "\"%s\": got %zu, want %zu",
+             "\"%s\": got %" PRIsz ", want %" PRIsz,
              name, array_len, ds->ds_num);
     return 0;
   } else if (array_len > ds->ds_num) {
     log_warn("av2value: array contains excess elements for type \"%s\": got "
-             "%zu, want %zu",
+             "%" PRIsz ", want %" PRIsz,
              name, array_len, ds->ds_num);
   }
 
@@ -426,8 +409,6 @@ static int hv2value_list(pTHX_ HV *hash, value_list_t *vl) {
 
   if (NULL != (tmp = hv_fetch(hash, "host", 4, 0)))
     sstrncpy(vl->host, SvPV_nolen(*tmp), sizeof(vl->host));
-  else
-    sstrncpy(vl->host, hostname_g, sizeof(vl->host));
 
   if (NULL != (tmp = hv_fetch(hash, "plugin", 6, 0)))
     sstrncpy(vl->plugin, SvPV_nolen(*tmp), sizeof(vl->plugin));
@@ -496,16 +477,16 @@ static int av2data_set(pTHX_ AV *array, char *name, data_set_t *ds) {
  *   meta     => [ { name => <name>, value => <value> }, ... ]
  * }
  */
-static int av2notification_meta(pTHX_ AV *array, notification_meta_t **meta) {
-  notification_meta_t **m = meta;
+static int av2notification_meta(pTHX_ AV *array,
+                                notification_meta_t **ret_meta) {
+  notification_meta_t *tail = NULL;
 
   int len = av_len(array);
 
   for (int i = 0; i <= len; ++i) {
     SV **tmp = av_fetch(array, i, 0);
-    HV *hash;
 
-    if (NULL == tmp)
+    if (tmp == NULL)
       return -1;
 
     if (!(SvROK(*tmp) && (SVt_PVHV == SvTYPE(SvRV(*tmp))))) {
@@ -514,42 +495,51 @@ static int av2notification_meta(pTHX_ AV *array, notification_meta_t **meta) {
       continue;
     }
 
-    hash = (HV *)SvRV(*tmp);
+    HV *hash = (HV *)SvRV(*tmp);
 
-    *m = smalloc(sizeof(**m));
+    notification_meta_t *m = calloc(1, sizeof(*m));
+    if (m == NULL)
+      return ENOMEM;
 
-    if (NULL == (tmp = hv_fetch(hash, "name", 4, 0))) {
+    SV **name = hv_fetch(hash, "name", strlen("name"), 0);
+    if (name == NULL) {
       log_warn("av2notification_meta: Skipping invalid "
                "meta information.");
-      free(*m);
+      sfree(m);
       continue;
     }
-    sstrncpy((*m)->name, SvPV_nolen(*tmp), sizeof((*m)->name));
+    sstrncpy(m->name, SvPV_nolen(*name), sizeof(m->name));
 
-    if (NULL == (tmp = hv_fetch(hash, "value", 5, 0))) {
+    SV **value = hv_fetch(hash, "value", strlen("value"), 0);
+    if (value == NULL) {
       log_warn("av2notification_meta: Skipping invalid "
                "meta information.");
-      free(*m);
+      sfree(m);
       continue;
     }
 
-    if (SvNOK(*tmp)) {
-      (*m)->nm_value.nm_double = SvNVX(*tmp);
-      (*m)->type = NM_TYPE_DOUBLE;
-    } else if (SvUOK(*tmp)) {
-      (*m)->nm_value.nm_unsigned_int = SvUVX(*tmp);
-      (*m)->type = NM_TYPE_UNSIGNED_INT;
-    } else if (SvIOK(*tmp)) {
-      (*m)->nm_value.nm_signed_int = SvIVX(*tmp);
-      (*m)->type = NM_TYPE_SIGNED_INT;
+    if (SvNOK(*value)) {
+      m->nm_value.nm_double = SvNVX(*value);
+      m->type = NM_TYPE_DOUBLE;
+    } else if (SvUOK(*value)) {
+      m->nm_value.nm_unsigned_int = SvUVX(*value);
+      m->type = NM_TYPE_UNSIGNED_INT;
+    } else if (SvIOK(*value)) {
+      m->nm_value.nm_signed_int = SvIVX(*value);
+      m->type = NM_TYPE_SIGNED_INT;
     } else {
-      (*m)->nm_value.nm_string = sstrdup(SvPV_nolen(*tmp));
-      (*m)->type = NM_TYPE_STRING;
+      m->nm_value.nm_string = sstrdup(SvPV_nolen(*value));
+      m->type = NM_TYPE_STRING;
     }
 
-    (*m)->next = NULL;
-    m = &((*m)->next);
+    m->next = NULL;
+    if (tail == NULL)
+      *ret_meta = m;
+    else
+      tail->next = m;
+    tail = m;
   }
+
   return 0;
 } /* static int av2notification_meta (AV *, notification_meta_t *) */
 
@@ -707,10 +697,8 @@ static int value_list2hv(pTHX_ value_list_t *vl, data_set_t *ds, HV *hash) {
 
 static int notification_meta2av(pTHX_ notification_meta_t *meta, AV *array) {
   int meta_num = 0;
-
-  while (meta) {
+  for (notification_meta_t *m = meta; m != NULL; m = m->next) {
     ++meta_num;
-    meta = meta->next;
   }
 
   av_extend(array, meta_num);
@@ -879,8 +867,8 @@ static char *get_module_name(char *buf, size_t buf_len, const char *module) {
   else
     status = ssnprintf(buf, buf_len, "%s::%s", base_name, module);
   if ((status < 0) || ((unsigned int)status >= buf_len))
-    return (NULL);
-  return (buf);
+    return NULL;
+  return buf;
 } /* char *get_module_name */
 
 /*
@@ -984,7 +972,7 @@ static int pplugin_dispatch_notification(pTHX_ HV *notif) {
  * Call perl sub with thread locking flags handled.
  */
 static int call_pv_locked(pTHX_ const char *sub_name) {
-  _Bool old_running;
+  bool old_running;
   int ret;
 
   c_ithread_t *t = (c_ithread_t *)pthread_getspecific(perl_thr_key);
@@ -992,7 +980,7 @@ static int call_pv_locked(pTHX_ const char *sub_name) {
     return 0;
 
   old_running = t->running;
-  t->running = 1;
+  t->running = true;
 
   if (t->shutdown) {
     t->running = old_running;
@@ -1192,7 +1180,7 @@ static void c_ithread_destroy(c_ithread_t *ithread) {
   /* Mark as running to avoid deadlock:
      c_ithread_destroy -> log_debug -> perl_log()
   */
-  ithread->running = 1;
+  ithread->running = true;
   log_debug("Shutting down Perl interpreter %p...", aTHX);
 
 #if COLLECT_DEBUG
@@ -1278,8 +1266,8 @@ static c_ithread_t *c_ithread_create(PerlInterpreter *base) {
   }
 
   t->pthread = pthread_self();
-  t->running = 0;
-  t->shutdown = 0;
+  t->running = false;
+  t->shutdown = false;
   perl_threads->tail = t;
 
   pthread_setspecific(perl_thr_key, (const void *)t);
@@ -1619,18 +1607,19 @@ static void _plugin_register_generic_userdata(pTHX, int type,
       ret = plugin_register_flush("perl", perl_flush, /* user_data = */ NULL);
     }
 
-    if (0 == ret)
+    if (0 == ret) {
       ret = plugin_register_flush(pluginname, perl_flush, &userdata);
+    } else {
+      free(userdata.data);
+    }
   } else {
     ret = -1;
   }
 
   if (0 == ret)
     XSRETURN_YES;
-  else {
-    free(userdata.data);
+  else
     XSRETURN_EMPTY;
-  }
 } /* static void _plugin_register_generic_userdata ( ... ) */
 
 /*
@@ -1644,23 +1633,23 @@ static void _plugin_register_generic_userdata(pTHX, int type,
  */
 
 static XS(Collectd_plugin_register_read) {
-  return _plugin_register_generic_userdata(aTHX, PLUGIN_READ, "read");
+  _plugin_register_generic_userdata(aTHX, PLUGIN_READ, "read");
 }
 
 static XS(Collectd_plugin_register_write) {
-  return _plugin_register_generic_userdata(aTHX, PLUGIN_WRITE, "write");
+  _plugin_register_generic_userdata(aTHX, PLUGIN_WRITE, "write");
 }
 
 static XS(Collectd_plugin_register_log) {
-  return _plugin_register_generic_userdata(aTHX, PLUGIN_LOG, "log");
+  _plugin_register_generic_userdata(aTHX, PLUGIN_LOG, "log");
 }
 
 static XS(Collectd_plugin_register_notification) {
-  return _plugin_register_generic_userdata(aTHX, PLUGIN_NOTIF, "notification");
+  _plugin_register_generic_userdata(aTHX, PLUGIN_NOTIF, "notification");
 }
 
 static XS(Collectd_plugin_register_flush) {
-  return _plugin_register_generic_userdata(aTHX, PLUGIN_FLUSH, "flush");
+  _plugin_register_generic_userdata(aTHX, PLUGIN_FLUSH, "flush");
 }
 
 typedef int perl_unregister_function_t(const char *name);
@@ -1687,8 +1676,6 @@ static void _plugin_unregister_generic(pTHX, perl_unregister_function_t *unreg,
   unreg(SvPV_nolen(ST(0)));
 
   XSRETURN_EMPTY;
-
-  return;
 } /* static void _plugin_unregister_generic ( ... ) */
 
 /*
@@ -1702,24 +1689,24 @@ static void _plugin_unregister_generic(pTHX, perl_unregister_function_t *unreg,
  */
 
 static XS(Collectd_plugin_unregister_read) {
-  return _plugin_unregister_generic(aTHX, plugin_unregister_read, "read");
+  _plugin_unregister_generic(aTHX, plugin_unregister_read, "read");
 }
 
 static XS(Collectd_plugin_unregister_write) {
-  return _plugin_unregister_generic(aTHX, plugin_unregister_write, "write");
+  _plugin_unregister_generic(aTHX, plugin_unregister_write, "write");
 }
 
 static XS(Collectd_plugin_unregister_log) {
-  return _plugin_unregister_generic(aTHX, plugin_unregister_log, "log");
+  _plugin_unregister_generic(aTHX, plugin_unregister_log, "log");
 }
 
 static XS(Collectd_plugin_unregister_notification) {
-  return _plugin_unregister_generic(aTHX, plugin_unregister_notification,
-                                    "notification");
+  _plugin_unregister_generic(aTHX, plugin_unregister_notification,
+                             "notification");
 }
 
 static XS(Collectd_plugin_unregister_flush) {
-  return _plugin_unregister_generic(aTHX, plugin_unregister_flush, "flush");
+  _plugin_unregister_generic(aTHX, plugin_unregister_flush, "flush");
 }
 
 /*
@@ -2093,7 +2080,7 @@ static int perl_init(void) {
   /* Lock the base thread to avoid race conditions with c_ithread_create().
    * See https://github.com/collectd/collectd/issues/9 and
    *     https://github.com/collectd/collectd/issues/1706 for details.
-  */
+   */
   assert(aTHX == perl_threads->head->interp);
   pthread_mutex_lock(&perl_threads->mutex);
 
@@ -2184,7 +2171,7 @@ static void perl_log(int level, const char *msg, user_data_t *user_data) {
   /* Lock the base thread if this is not called from one of the read threads
    * to avoid race conditions with c_ithread_create(). See
    * https://github.com/collectd/collectd/issues/9 for details.
-  */
+   */
 
   if (aTHX == perl_threads->head->interp)
     pthread_mutex_lock(&perl_threads->mutex);
@@ -2278,7 +2265,7 @@ static int perl_shutdown(void) {
      * the thread as this will free the memory */
     t = t->prev;
 
-    thr->shutdown = 1;
+    thr->shutdown = true;
     if (thr->running) {
       /* Give some time to thread to exit from Perl interpreter */
       WARNING("perl shutdown: Thread is running inside Perl. Waiting.");
@@ -2343,14 +2330,25 @@ static int g_interval_set(pTHX_ SV *var, MAGIC *mg) {
   return 0;
 } /* static int g_interval_set (pTHX_ SV *, MAGIC *) */
 
-static MGVTBL g_pv_vtbl = {g_pv_get, g_pv_set, NULL, NULL, NULL, NULL, NULL
+static MGVTBL g_pv_vtbl = {g_pv_get,
+                           g_pv_set,
+                           NULL,
+                           NULL,
+                           NULL,
+                           NULL,
+                           NULL
 #if HAVE_PERL_STRUCT_MGVTBL_SVT_LOCAL
                            ,
                            NULL
 #endif
 };
-static MGVTBL g_interval_vtbl = {g_interval_get, g_interval_set, NULL, NULL,
-                                 NULL, NULL, NULL
+static MGVTBL g_interval_vtbl = {g_interval_get,
+                                 g_interval_set,
+                                 NULL,
+                                 NULL,
+                                 NULL,
+                                 NULL,
+                                 NULL
 #if HAVE_PERL_STRUCT_MGVTBL_SVT_LOCAL
                                  ,
                                  NULL
@@ -2384,6 +2382,11 @@ static void xs_init(pTHX) {
    * accessing any such variable (this is basically the same as using
    * tie() in Perl) */
   /* global strings */
+  struct {
+    char name[64];
+    char *var;
+  } g_strings[] = {{"Collectd::hostname_g", hostname_g}, {"", NULL}};
+
   for (int i = 0; '\0' != g_strings[i].name[0]; ++i) {
     tmp = get_sv(g_strings[i].name, 1);
     sv_magicext(tmp, NULL, PERL_MAGIC_ext, &g_pv_vtbl, g_strings[i].var, 0);
@@ -2491,7 +2494,7 @@ static int perl_config_loadplugin(pTHX_ oconfig_item_t *ci) {
 
   if (NULL == get_module_name(module_name, sizeof(module_name), value)) {
     log_err("Invalid module name %s", value);
-    return (1);
+    return 1;
   }
 
   if (0 != init_pi(perl_argc, perl_argv))
@@ -2610,6 +2613,12 @@ static int perl_config_plugin(pTHX_ oconfig_item_t *ci) {
   char *plugin;
   HV *config;
 
+  if (NULL == perl_threads) {
+    log_err("A `Plugin' block was encountered but no plugin was loaded yet. "
+            "Put the appropriate `LoadPlugin' option in front of it.");
+    return -1;
+  }
+
   dSP;
 
   if ((1 != ci->values_num) || (OCONFIG_TYPE_STRING != ci->values[0].type)) {
@@ -2711,5 +2720,3 @@ void module_register(void) {
   plugin_register_complex_config("perl", perl_config);
   return;
 } /* void module_register (void) */
-
-/* vim: set sw=4 ts=4 tw=78 noexpandtab : */

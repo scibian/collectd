@@ -26,15 +26,16 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
-#include "utils_latency_config.h"
+#include "utils/common/common.h"
+#include "utils/latency/latency_config.h"
 #include "utils_tail_match.h"
 
 /*
  *  <Plugin tail>
  *    <File "/var/log/exim4/mainlog">
- *	Instance "exim"
+ *      Plugin "mail"
+ *      Instance "exim"
  *      Interval 60
  *	<Match>
  *	  Regex "S=([1-9][0-9]*)"
@@ -53,20 +54,23 @@ struct ctail_config_match_s {
   int flags;
   char *type;
   char *type_instance;
-  cdtime_t interval;
   latency_config_t latency;
 };
 typedef struct ctail_config_match_s ctail_config_match_t;
 
-static cu_tail_match_t **tail_match_list = NULL;
-static size_t tail_match_list_num = 0;
-static cdtime_t tail_match_list_intervals[255];
+static size_t tail_file_num;
+
+static int ctail_read(user_data_t *ud);
+
+static void ctail_match_free(void *arg) {
+  tail_match_destroy((cu_tail_match_t *)arg);
+} /* void ctail_match_free */
 
 static int ctail_config_add_match_dstype(ctail_config_match_t *cm,
                                          oconfig_item_t *ci) {
   if ((ci->values_num != 1) || (ci->values[0].type != OCONFIG_TYPE_STRING)) {
     WARNING("tail plugin: `DSType' needs exactly one string argument.");
-    return (-1);
+    return -1;
   }
 
   char const *ds_type = ci->values[0].value.string;
@@ -91,9 +95,9 @@ static int ctail_config_add_match_dstype(ctail_config_match_t *cm,
   } else if (strcasecmp("Distribution", ds_type) == 0) {
     cm->flags = UTILS_MATCH_DS_TYPE_GAUGE | UTILS_MATCH_CF_GAUGE_DIST;
 
-    int status = latency_config(&cm->latency, ci, "tail");
+    int status = latency_config(&cm->latency, ci);
     if (status != 0)
-      return (status);
+      return status;
   } else if (strncasecmp("Counter", ds_type, strlen("Counter")) == 0) {
     cm->flags = UTILS_MATCH_DS_TYPE_COUNTER;
     if (strcasecmp("CounterSet", ds_type) == 0)
@@ -127,15 +131,15 @@ static int ctail_config_add_match_dstype(ctail_config_match_t *cm,
   if (cm->flags == 0) {
     WARNING("tail plugin: `%s' is not a valid argument to `DSType'.",
             ci->values[0].value.string);
-    return (-1);
+    return -1;
   }
 
-  return (0);
+  return 0;
 } /* int ctail_config_add_match_dstype */
 
-static int ctail_config_add_match(cu_tail_match_t *tm,
+static int ctail_config_add_match(cu_tail_match_t *tm, const char *plugin_name,
                                   const char *plugin_instance,
-                                  oconfig_item_t *ci, cdtime_t interval) {
+                                  oconfig_item_t *ci) {
   ctail_config_match_t cm = {0};
   int status;
 
@@ -191,8 +195,9 @@ static int ctail_config_add_match(cu_tail_match_t *tm,
   if (status == 0) {
     // TODO(octo): there's nothing "simple" about the latency stuff …
     status = tail_match_add_match_simple(
-        tm, cm.regex, cm.excluderegex, cm.flags, "tail", plugin_instance,
-        cm.type, cm.type_instance, cm.latency, interval);
+        tm, cm.regex, cm.excluderegex, cm.flags,
+        (plugin_name != NULL) ? plugin_name : "tail", plugin_instance, cm.type,
+        cm.type_instance, cm.latency);
 
     if (status != 0)
       ERROR("tail plugin: tail_match_add_match_simple failed.");
@@ -204,37 +209,40 @@ static int ctail_config_add_match(cu_tail_match_t *tm,
   sfree(cm.type_instance);
   latency_config_free(cm.latency);
 
-  return (status);
+  return status;
 } /* int ctail_config_add_match */
 
 static int ctail_config_add_file(oconfig_item_t *ci) {
   cu_tail_match_t *tm;
   cdtime_t interval = 0;
+  char *plugin_name = NULL;
   char *plugin_instance = NULL;
   int num_matches = 0;
 
   if ((ci->values_num != 1) || (ci->values[0].type != OCONFIG_TYPE_STRING)) {
     WARNING("tail plugin: `File' needs exactly one string argument.");
-    return (-1);
+    return -1;
   }
 
   tm = tail_match_create(ci->values[0].value.string);
   if (tm == NULL) {
     ERROR("tail plugin: tail_match_create (%s) failed.",
           ci->values[0].value.string);
-    return (-1);
+    return -1;
   }
 
   for (int i = 0; i < ci->children_num; i++) {
     oconfig_item_t *option = ci->children + i;
     int status = 0;
 
-    if (strcasecmp("Instance", option->key) == 0)
+    if (strcasecmp("Plugin", option->key) == 0)
+      status = cf_util_get_string(option, &plugin_name);
+    else if (strcasecmp("Instance", option->key) == 0)
       status = cf_util_get_string(option, &plugin_instance);
     else if (strcasecmp("Interval", option->key) == 0)
       cf_util_get_cdtime(option, &interval);
     else if (strcasecmp("Match", option->key) == 0) {
-      status = ctail_config_add_match(tm, plugin_instance, option, interval);
+      status = ctail_config_add_match(tm, plugin_name, plugin_instance, option);
       if (status == 0)
         num_matches++;
       /* Be mild with failed matches.. */
@@ -247,31 +255,24 @@ static int ctail_config_add_file(oconfig_item_t *ci) {
       break;
   } /* for (i = 0; i < ci->children_num; i++) */
 
+  sfree(plugin_name);
   sfree(plugin_instance);
 
   if (num_matches == 0) {
     ERROR("tail plugin: No (valid) matches found for file `%s'.",
           ci->values[0].value.string);
     tail_match_destroy(tm);
-    return (-1);
-  } else {
-    cu_tail_match_t **temp;
-
-    temp = realloc(tail_match_list,
-                   sizeof(cu_tail_match_t *) * (tail_match_list_num + 1));
-    if (temp == NULL) {
-      ERROR("tail plugin: realloc failed.");
-      tail_match_destroy(tm);
-      return (-1);
-    }
-
-    tail_match_list = temp;
-    tail_match_list[tail_match_list_num] = tm;
-    tail_match_list_intervals[tail_match_list_num] = interval;
-    tail_match_list_num++;
+    return -1;
   }
 
-  return (0);
+  char str[255];
+  snprintf(str, sizeof(str), "tail-%zu", tail_file_num++);
+
+  plugin_register_complex_read(
+      NULL, str, ctail_read, interval,
+      &(user_data_t){.data = tm, .free_func = ctail_match_free});
+
+  return 0;
 } /* int ctail_config_add_file */
 
 static int ctail_config(oconfig_item_t *ci) {
@@ -285,7 +286,7 @@ static int ctail_config(oconfig_item_t *ci) {
     }
   } /* for (i = 0; i < ci->children_num; i++) */
 
-  return (0);
+  return 0;
 } /* int ctail_config */
 
 static int ctail_read(user_data_t *ud) {
@@ -294,48 +295,12 @@ static int ctail_read(user_data_t *ud) {
   status = tail_match_read((cu_tail_match_t *)ud->data);
   if (status != 0) {
     ERROR("tail plugin: tail_match_read failed.");
-    return (-1);
+    return -1;
   }
 
-  return (0);
+  return 0;
 } /* int ctail_read */
-
-static int ctail_init(void) {
-  char str[255];
-
-  if (tail_match_list_num == 0) {
-    WARNING("tail plugin: File list is empty. Returning an error.");
-    return (-1);
-  }
-
-  for (size_t i = 0; i < tail_match_list_num; i++) {
-    ssnprintf(str, sizeof(str), "tail-%zu", i);
-
-    plugin_register_complex_read(NULL, str, ctail_read,
-                                 tail_match_list_intervals[i],
-                                 &(user_data_t){
-                                     .data = tail_match_list[i],
-                                 });
-  }
-
-  return (0);
-} /* int ctail_init */
-
-static int ctail_shutdown(void) {
-  for (size_t i = 0; i < tail_match_list_num; i++) {
-    tail_match_destroy(tail_match_list[i]);
-    tail_match_list[i] = NULL;
-  }
-  sfree(tail_match_list);
-  tail_match_list_num = 0;
-
-  return (0);
-} /* int ctail_shutdown */
 
 void module_register(void) {
   plugin_register_complex_config("tail", ctail_config);
-  plugin_register_init("tail", ctail_init);
-  plugin_register_shutdown("tail", ctail_shutdown);
 } /* void module_register */
-
-/* vim: set sw=2 sts=2 ts=8 : */

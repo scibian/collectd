@@ -26,7 +26,7 @@
 
 #include "collectd.h"
 
-#include "common.h"
+#include "utils/common/common.h"
 
 #include "configfile.h"
 #include "plugin.h"
@@ -39,8 +39,8 @@ static int parse_ds(data_source_t *dsrc, char *buf, size_t buf_len) {
   int fields_num;
 
   if (buf_len < 11) {
-    ERROR("parse_ds: (buf_len = %zu) < 11", buf_len);
-    return (-1);
+    ERROR("parse_ds: (buf_len = %" PRIsz ") < 11", buf_len);
+    return -1;
   }
 
   if (buf[buf_len - 1] == ',') {
@@ -61,7 +61,7 @@ static int parse_ds(data_source_t *dsrc, char *buf, size_t buf_len) {
 
   if (fields_num != 4) {
     ERROR("parse_ds: (fields_num = %i) != 4", fields_num);
-    return (-1);
+    return -1;
   }
 
   sstrncpy(dsrc->name, fields[0], sizeof(dsrc->name));
@@ -77,7 +77,7 @@ static int parse_ds(data_source_t *dsrc, char *buf, size_t buf_len) {
   else {
     ERROR("(fields[1] = %s) != (GAUGE || COUNTER || DERIVE || ABSOLUTE)",
           fields[1]);
-    return (-1);
+    return -1;
   }
 
   if (strcasecmp(fields[2], "U") == 0)
@@ -90,14 +90,12 @@ static int parse_ds(data_source_t *dsrc, char *buf, size_t buf_len) {
   else
     dsrc->max = atof(fields[3]);
 
-  return (0);
+  return 0;
 } /* int parse_ds */
 
 static void parse_line(char *buf) {
   char *fields[64];
   size_t fields_num;
-  data_set_t *ds;
-
   fields_num = strsplit(buf, fields, 64);
   if (fields_num < 2)
     return;
@@ -106,33 +104,27 @@ static void parse_line(char *buf) {
   if (fields[0][0] == '#')
     return;
 
-  ds = calloc(1, sizeof(*ds));
-  if (ds == NULL)
+  data_set_t ds = {{0}};
+
+  sstrncpy(ds.type, fields[0], sizeof(ds.type));
+
+  ds.ds_num = fields_num - 1;
+  ds.ds = calloc(ds.ds_num, sizeof(*ds.ds));
+  if (ds.ds == NULL)
     return;
 
-  sstrncpy(ds->type, fields[0], sizeof(ds->type));
-
-  ds->ds_num = fields_num - 1;
-  ds->ds = (data_source_t *)calloc(ds->ds_num, sizeof(data_source_t));
-  if (ds->ds == NULL) {
-    sfree(ds);
-    return;
-  }
-
-  for (size_t i = 0; i < ds->ds_num; i++)
-    if (parse_ds(ds->ds + i, fields[i + 1], strlen(fields[i + 1])) != 0) {
-      ERROR("types_list: parse_line: Cannot parse data source #%zu "
-            "of data set %s",
-            i, ds->type);
-      sfree(ds->ds);
-      sfree(ds);
+  for (size_t i = 0; i < ds.ds_num; i++)
+    if (parse_ds(ds.ds + i, fields[i + 1], strlen(fields[i + 1])) != 0) {
+      ERROR("types_list: parse_line: Cannot parse data source #%" PRIsz
+            " of data set %s",
+            i, ds.type);
+      sfree(ds.ds);
       return;
     }
 
-  plugin_register_data_set(ds);
+  plugin_register_data_set(&ds);
 
-  sfree(ds->ds);
-  sfree(ds);
+  sfree(ds.ds);
 } /* void parse_line */
 
 static void parse_file(FILE *fh) {
@@ -170,16 +162,14 @@ int read_types_list(const char *file) {
   FILE *fh;
 
   if (file == NULL)
-    return (-1);
+    return -1;
 
   fh = fopen(file, "r");
   if (fh == NULL) {
-    char errbuf[1024];
     fprintf(stderr, "Failed to open types database `%s': %s.\n", file,
-            sstrerror(errno, errbuf, sizeof(errbuf)));
-    ERROR("Failed to open types database `%s': %s", file,
-          sstrerror(errno, errbuf, sizeof(errbuf)));
-    return (-1);
+            STRERRNO);
+    ERROR("Failed to open types database `%s': %s", file, STRERRNO);
+    return -1;
   }
 
   parse_file(fh);
@@ -189,9 +179,5 @@ int read_types_list(const char *file) {
 
   DEBUG("Done parsing `%s'", file);
 
-  return (0);
+  return 0;
 } /* int read_types_list */
-
-/*
- * vim: shiftwidth=2:softtabstop=2:tabstop=8
- */

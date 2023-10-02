@@ -21,8 +21,8 @@
 
 #include "collectd.h"
 
-#include "common.h"
 #include "plugin.h"
+#include "utils/common/common.h"
 #include "utils_cache.h"
 
 #include <tcrdb.h>
@@ -33,10 +33,10 @@
 static const char *config_keys[] = {"Host", "Port"};
 static int config_keys_num = STATIC_ARRAY_SIZE(config_keys);
 
-static char *config_host = NULL;
-static char *config_port = NULL;
+static char *config_host;
+static char *config_port;
 
-static TCRDB *rdb = NULL;
+static TCRDB *rdb;
 
 static int tt_config(const char *key, const char *value) {
   if (strcasecmp("Host", key) == 0) {
@@ -45,7 +45,7 @@ static int tt_config(const char *key, const char *value) {
     temp = strdup(value);
     if (temp == NULL) {
       ERROR("tokyotyrant plugin: Host strdup failed.");
-      return (1);
+      return 1;
     }
     sfree(config_host);
     config_host = temp;
@@ -55,16 +55,16 @@ static int tt_config(const char *key, const char *value) {
     temp = strdup(value);
     if (temp == NULL) {
       ERROR("tokyotyrant plugin: Port strdup failed.");
-      return (1);
+      return 1;
     }
     sfree(config_port);
     config_port = temp;
   } else {
     ERROR("tokyotyrant plugin: error: unrecognized configuration key %s", key);
-    return (-1);
+    return -1;
   }
 
-  return (0);
+  return 0;
 }
 
 static void printerr(void) {
@@ -116,7 +116,7 @@ static int tt_read(void) {
 
   tt_open_db();
   if (rdb == NULL)
-    return (-1);
+    return -1;
 
   rnum = tcrdbrnum(rdb);
   tt_submit(rnum, "records");
@@ -124,7 +124,7 @@ static int tt_read(void) {
   size = tcrdbsize(rdb);
   tt_submit(size, "file_size");
 
-  return (0);
+  return 0;
 }
 
 static int tt_shutdown(void) {
@@ -135,13 +135,13 @@ static int tt_shutdown(void) {
     if (!tcrdbclose(rdb)) {
       printerr();
       tcrdbdel(rdb);
-      return (1);
+      return 1;
     }
     tcrdbdel(rdb);
     rdb = NULL;
   }
 
-  return (0);
+  return 0;
 }
 
 void module_register(void) {
@@ -150,5 +150,3 @@ void module_register(void) {
   plugin_register_read("tokyotyrant", tt_read);
   plugin_register_shutdown("tokyotyrant", tt_shutdown);
 }
-
-/* vim: set sw=8 ts=8 tw=78 : */

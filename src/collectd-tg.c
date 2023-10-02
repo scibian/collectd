@@ -35,6 +35,7 @@
 #include <errno.h>
 #include <math.h>
 #include <signal.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,10 +43,10 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "utils_heap.h"
+#include "utils/heap/heap.h"
 
-#include "libcollectdclient/collectd/client.h"
-#include "libcollectdclient/collectd/network.h"
+#include "collectd/client.h"
+#include "collectd/network.h"
 
 #define DEF_NUM_HOSTS 1000
 #define DEF_NUM_PLUGINS 20
@@ -61,12 +62,12 @@ static const char *conf_service = NET_DEFAULT_PORT;
 
 static lcc_network_t *net;
 
-static c_heap_t *values_heap = NULL;
+static c_heap_t *values_heap;
 
 static struct sigaction sigint_action;
 static struct sigaction sigterm_action;
 
-static _Bool loop = 1;
+static bool loop = true;
 
 __attribute__((noreturn)) static void exit_usage(int exit_status) /* {{{ */
 {
@@ -94,9 +95,9 @@ __attribute__((noreturn)) static void exit_usage(int exit_status) /* {{{ */
   exit(exit_status);
 } /* }}} void exit_usage */
 
-static void signal_handler(int signal) /* {{{ */
+static void signal_handler(int __attribute__((unused)) signal) /* {{{ */
 {
-  loop = 0;
+  loop = false;
 } /* }}} void signal_handler */
 
 #if HAVE_CLOCK_GETTIME
@@ -104,10 +105,10 @@ static double dtime(void) /* {{{ */
 {
   struct timespec ts = {0};
 
-  if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
+  if (clock_gettime(CLOCK_REALTIME, &ts) != 0)
     perror("clock_gettime");
 
-  return ((double)ts.tv_sec) + (((double)ts.tv_nsec) / 1e9);
+  return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
 } /* }}} double dtime */
 #else
 /* Work around for Mac OS X which doesn't have clock_gettime(2). *sigh* */
@@ -118,7 +119,7 @@ static double dtime(void) /* {{{ */
   if (gettimeofday(&tv, /* timezone = */ NULL) != 0)
     perror("gettimeofday");
 
-  return ((double)tv.tv_sec) + (((double)tv.tv_usec) / 1e6);
+  return (double)tv.tv_sec + ((double)tv.tv_usec) / 1e6;
 } /* }}} double dtime */
 #endif
 
@@ -128,11 +129,11 @@ static int compare_time(const void *v0, const void *v1) /* {{{ */
   const lcc_value_list_t *vl1 = v1;
 
   if (vl0->time < vl1->time)
-    return (-1);
+    return -1;
   else if (vl0->time > vl1->time)
-    return (1);
+    return 1;
   else
-    return (0);
+    return 0;
 } /* }}} int compare_time */
 
 static int get_boundet_random(int min, int max) /* {{{ */
@@ -140,14 +141,14 @@ static int get_boundet_random(int min, int max) /* {{{ */
   int range;
 
   if (min >= max)
-    return (-1);
+    return -1;
   if (min == (max - 1))
-    return (min);
+    return min;
 
   range = max - min;
 
-  return (min + ((int)(((double)range) * ((double)random()) /
-                       (((double)RAND_MAX) + 1.0))));
+  return min + ((int)(((double)range) * ((double)random()) /
+                      (((double)RAND_MAX) + 1.0)));
 } /* }}} int get_boundet_random */
 
 static lcc_value_list_t *create_value_list(void) /* {{{ */
@@ -158,14 +159,14 @@ static lcc_value_list_t *create_value_list(void) /* {{{ */
   vl = calloc(1, sizeof(*vl));
   if (vl == NULL) {
     fprintf(stderr, "calloc failed.\n");
-    return (NULL);
+    return NULL;
   }
 
   vl->values = calloc(/* nmemb = */ 1, sizeof(*vl->values));
   if (vl->values == NULL) {
     fprintf(stderr, "calloc failed.\n");
     free(vl);
-    return (NULL);
+    return NULL;
   }
 
   vl->values_types = calloc(/* nmemb = */ 1, sizeof(*vl->values_types));
@@ -173,7 +174,7 @@ static lcc_value_list_t *create_value_list(void) /* {{{ */
     fprintf(stderr, "calloc failed.\n");
     free(vl->values);
     free(vl);
-    return (NULL);
+    return NULL;
   }
 
   vl->values_len = 1;
@@ -195,11 +196,11 @@ static lcc_value_list_t *create_value_list(void) /* {{{ */
   strncpy(vl->identifier.type,
           (vl->values_types[0] == LCC_TYPE_GAUGE) ? "gauge" : "derive",
           sizeof(vl->identifier.type));
-  vl->identifier.type[sizeof(vl->identifier.type) - 1] = 0;
+  vl->identifier.type[sizeof(vl->identifier.type) - 1] = '\0';
   snprintf(vl->identifier.type_instance, sizeof(vl->identifier.type_instance),
            "ti%li", random());
 
-  return (vl);
+  return vl;
 } /* }}} int create_value_list */
 
 static void destroy_value_list(lcc_value_list_t *vl) /* {{{ */
@@ -228,7 +229,7 @@ static int send_value(lcc_value_list_t *vl) /* {{{ */
 
   vl->time += vl->interval;
 
-  return (0);
+  return 0;
 } /* }}} int send_value */
 
 static int get_integer_opt(const char *str, int *ret_value) /* {{{ */
@@ -252,7 +253,7 @@ static int get_integer_opt(const char *str, int *ret_value) /* {{{ */
   }
 
   *ret_value = tmp;
-  return (0);
+  return 0;
 } /* }}} int get_integer_opt */
 
 static int get_double_opt(const char *str, double *ret_value) /* {{{ */
@@ -276,7 +277,7 @@ static int get_double_opt(const char *str, double *ret_value) /* {{{ */
   }
 
   *ret_value = tmp;
-  return (0);
+  return 0;
 } /* }}} int get_double_opt */
 
 static int read_options(int argc, char **argv) /* {{{ */
@@ -317,7 +318,7 @@ static int read_options(int argc, char **argv) /* {{{ */
     } /* switch (opt) */
   }   /* while (getopt) */
 
-  return (0);
+  return 0;
 } /* }}} int read_options */
 
 int main(int argc, char **argv) /* {{{ */
@@ -423,5 +424,3 @@ int main(int argc, char **argv) /* {{{ */
   lcc_network_destroy(net);
   exit(EXIT_SUCCESS);
 } /* }}} int main */
-
-/* vim: set sw=2 sts=2 et fdm=marker : */
