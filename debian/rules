@@ -53,9 +53,17 @@ confflags = --host=$(DEB_HOST_GNU_TYPE) \
 			--with-perl-bindings="INSTALLDIRS=vendor INSTALL_BASE=" \
 			--without-libstatgrab \
 			--without-included-ltdl \
+			--enable-all-plugins \
 			--disable-static \
 			--disable-silent-rules \
-			--enable-all-plugins
+                        --disable-amqp1 \
+                        --disable-dpdkevents \
+                        --disable-gpu_nvidia \
+                        --disable-intel_pmu \
+                        --disable-ovs_events \
+                        --disable-ovs_stats \
+                        --disable-snmp_agent \
+                        --disable-write_stackdriver
 
 # These plugins do not provide any functionality under Linux.
 # MacOS only (requires IO Kit):
