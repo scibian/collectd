@@ -1,60 +1,67 @@
-#! /bin/sh /usr/share/dpatch/dpatch-run
-## slurmd-plugin.dpatch by Rémi Palancher <remi@rezib.org>
-##
-## DP: plugin: slurmd plugin
+From bab77a595eb4ed244dbd15e6b68306ed8d67debc Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?R=C3=A9mi=20Palancher?= <remi-externe.palancher@edf.fr>
+Date: Thu, 7 Apr 2022 11:37:11 +0200
+Subject: [PATCH 2/4] plugin slurmd
 
-@DPATCH@
+---
+ Makefile.am           |    6 +
+ configure.ac          |    2 +
+ src/collectd.conf.in  |    6 +
+ src/collectd.conf.pod |   66 +++
+ src/slurmd.c          | 1116 +++++++++++++++++++++++++++++++++++++++++
+ 5 files changed, 1196 insertions(+)
+ create mode 100644 src/slurmd.c
 
-diff --git a/configure.ac b/configure.ac
-index 6ee6e9a..e1b477a 100644
---- a/configure.ac
-+++ b/configure.ac
-@@ -6472,6 +6472,7 @@ AC_PLUGIN([rrdtool],             [$with_librrd],            [RRDTool output plugin])
- AC_PLUGIN([sensors],             [$with_libsensors],        [lm_sensors statistics])
- AC_PLUGIN([serial],              [$plugin_serial],          [serial port traffic])
- AC_PLUGIN([sigrok],              [$with_libsigrok],         [sigrok acquisition sources])
-+AC_PLUGIN([slurmd],              [yes],                     [Slurmd jobs statistics])
- AC_PLUGIN([smart],               [$plugin_smart],           [SMART statistics])
- AC_PLUGIN([snmp],                [$with_libnetsnmp],        [SNMP querying plugin])
- AC_PLUGIN([statsd],              [yes],                     [StatsD plugin])
-@@ -6908,6 +6909,7 @@ AC_MSG_RESULT([    rrdtool . . . . . . . $enable_rrdtool])
- AC_MSG_RESULT([    sensors . . . . . . . $enable_sensors])
- AC_MSG_RESULT([    serial  . . . . . . . $enable_serial])
- AC_MSG_RESULT([    sigrok  . . . . . . . $enable_sigrok])
-+AC_MSG_RESULT([    slurmd  . . . . . . . $enable_slurmd])
- AC_MSG_RESULT([    smart . . . . . . . . $enable_smart])
- AC_MSG_RESULT([    snmp  . . . . . . . . $enable_snmp])
- AC_MSG_RESULT([    statsd  . . . . . . . $enable_statsd])
-diff --git a/src/Makefile.am b/src/Makefile.am
-index df60d0d..076f029 100644
---- a/src/Makefile.am
-+++ b/src/Makefile.am
-@@ -1049,6 +1049,12 @@ sigrok_la_LDFLAGS = $(PLUGIN_LDFLAGS)
+diff --git a/Makefile.am b/Makefile.am
+index 0821283..4b63041 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -1697,6 +1697,12 @@ sigrok_la_LDFLAGS = $(PLUGIN_LDFLAGS)
  sigrok_la_LIBADD = $(LIBSIGROK_LIBS)
  endif
  
 +if BUILD_PLUGIN_SLURMD
 +pkglib_LTLIBRARIES += slurmd.la
-+slurmd_la_SOURCES = slurmd.c
++slurmd_la_SOURCES = src/slurmd.c
 +slurmd_la_LDFLAGS = $(PLUGIN_LDFLAGS)
 +endif
 +
  if BUILD_PLUGIN_SMART
  if BUILD_WITH_LIBUDEV
  pkglib_LTLIBRARIES += smart.la
+diff --git a/configure.ac b/configure.ac
+index 7454fb4..62de854 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -6890,6 +6890,7 @@ AC_PLUGIN([rrdtool],             [$with_librrd],              [RRDTool output pl
+ AC_PLUGIN([sensors],             [$with_libsensors],          [lm_sensors statistics])
+ AC_PLUGIN([serial],              [$plugin_serial],            [serial port traffic])
+ AC_PLUGIN([sigrok],              [$with_libsigrok],           [sigrok acquisition sources])
++AC_PLUGIN([slurmd],              [yes],                       [Slurmd jobs statistics])
+ AC_PLUGIN([smart],               [$plugin_smart],             [SMART statistics])
+ AC_PLUGIN([snmp],                [$with_libnetsnmp],          [SNMP querying plugin])
+ AC_PLUGIN([snmp_agent],          [$with_libnetsnmpagent],     [SNMP agent plugin])
+@@ -7316,6 +7317,7 @@ AC_MSG_RESULT([    rrdtool . . . . . . . $enable_rrdtool])
+ AC_MSG_RESULT([    sensors . . . . . . . $enable_sensors])
+ AC_MSG_RESULT([    serial  . . . . . . . $enable_serial])
+ AC_MSG_RESULT([    sigrok  . . . . . . . $enable_sigrok])
++AC_MSG_RESULT([    slurmd  . . . . . . . $enable_slurmd])
+ AC_MSG_RESULT([    smart . . . . . . . . $enable_smart])
+ AC_MSG_RESULT([    snmp  . . . . . . . . $enable_snmp])
+ AC_MSG_RESULT([    snmp_agent  . . . . . $enable_snmp_agent])
 diff --git a/src/collectd.conf.in b/src/collectd.conf.in
-index 1f4ccf8..f466db2 100644
+index 043d33b..8dbe66f 100644
 --- a/src/collectd.conf.in
 +++ b/src/collectd.conf.in
-@@ -182,6 +182,7 @@
+@@ -191,6 +191,7 @@
  #@BUILD_PLUGIN_SENSORS_TRUE@LoadPlugin sensors
  #@BUILD_PLUGIN_SERIAL_TRUE@LoadPlugin serial
  #@BUILD_PLUGIN_SIGROK_TRUE@LoadPlugin sigrok
 +#@BUILD_PLUGIN_SLURMD_TRUE@LoadPlugin slurmd
  #@BUILD_PLUGIN_SMART_TRUE@LoadPlugin smart
  #@BUILD_PLUGIN_SNMP_TRUE@LoadPlugin snmp
- #@BUILD_PLUGIN_STATSD_TRUE@LoadPlugin statsd
-@@ -1164,6 +1165,11 @@
+ #@BUILD_PLUGIN_SNMP_AGENT_TRUE@LoadPlugin snmp_agent
+@@ -1355,6 +1356,11 @@
  #  </Device>
  #</Plugin>
  
@@ -67,10 +74,10 @@ index 1f4ccf8..f466db2 100644
  #  Disk "/^[hs]d[a-f][0-9]?$/"
  #  IgnoreSelected false
 diff --git a/src/collectd.conf.pod b/src/collectd.conf.pod
-index 978c1c5..81c01f1 100644
+index 835b2dd..575e331 100644
 --- a/src/collectd.conf.pod
 +++ b/src/collectd.conf.pod
-@@ -6831,6 +6831,72 @@ measurements are discarded.
+@@ -7965,6 +7965,72 @@ even if the kernel name changes.
  
  =back
  
@@ -145,7 +152,7 @@ index 978c1c5..81c01f1 100644
  Since the configuration of the C<snmp plugin> is a little more complicated than
 diff --git a/src/slurmd.c b/src/slurmd.c
 new file mode 100644
-index 0000000..305e081
+index 0000000..3432297
 --- /dev/null
 +++ b/src/slurmd.c
 @@ -0,0 +1,1116 @@
@@ -171,7 +178,7 @@ index 0000000..305e081
 + **/
 +
 +#include "collectd.h"
-+#include "common.h"
++#include "utils/common/common.h"
 +#include "plugin.h"
 +#include "configfile.h"
 +
@@ -378,7 +385,7 @@ index 0000000..305e081
 +
 +  sstrncpy (vl.host, hostname_g, sizeof (vl.host));
 +  sstrncpy (vl.plugin, "slurmd", sizeof (vl.plugin));
-+  ssnprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "job_%lu", job_number);
++  snprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "job_%lu", job_number);
 +  sstrncpy (vl.type, type, sizeof(vl.type));
 +  sstrncpy (vl.type_instance, type_instance, sizeof(vl.type_instance));
 +
@@ -469,19 +476,19 @@ index 0000000..305e081
 + */
 +void slurmd_snprintf_cpu_times (char *str, int strlen, cpu_time_t *times)
 +{
-+  ssnprintf(str, strlen,
-+            "user: %lu nice: %lu system: %lu idle: %lu iowait: %lu irq: %lu "
-+            "softirq: %lu steal: %lu guest: %lu guest_nice: %lu",
-+            times->user,
-+            times->nice,
-+            times->system,
-+            times->idle,
-+            times->iowait,
-+            times->irq,
-+            times->softirq,
-+            times->steal,
-+            times->guest,
-+            times->guest_nice);
++  snprintf(str, strlen,
++           "user: %lu nice: %lu system: %lu idle: %lu iowait: %lu irq: %lu "
++           "softirq: %lu steal: %lu guest: %lu guest_nice: %lu",
++           times->user,
++           times->nice,
++           times->system,
++           times->idle,
++           times->iowait,
++           times->irq,
++           times->softirq,
++           times->steal,
++           times->guest,
++           times->guest_nice);
 +} /* void slurmd_snprintf_cpu_times */
 +#endif
 +
@@ -574,7 +581,7 @@ index 0000000..305e081
 +
 +  /* build smaps fpath */
 +  bzero(smaps_fpath, sizeof(smaps_fpath));
-+  ssnprintf(smaps_fpath, sizeof(smaps_fpath), "/proc/%d/smaps", pid);
++  snprintf(smaps_fpath, sizeof(smaps_fpath), "/proc/%d/smaps", pid);
 +
 +  smaps_fh = fopen(smaps_fpath, "r");
 +
@@ -612,7 +619,7 @@ index 0000000..305e081
 +
 +  /* build stat fpath */
 +  bzero(stat_fpath, sizeof(stat_fpath));
-+  ssnprintf(stat_fpath, sizeof(stat_fpath), "/proc/%d/stat", pid);
++  snprintf(stat_fpath, sizeof(stat_fpath), "/proc/%d/stat", pid);
 +
 +  stat_fh = fopen(stat_fpath, "r");
 +
@@ -665,7 +672,7 @@ index 0000000..305e081
 +    return (-1);
 +  }
 +
-+  ssnprintf(searched_cpu_name, MAX_CPU_NAME_SIZE, "cpu%d", job_cpus[cpu_idx]);
++  snprintf(searched_cpu_name, MAX_CPU_NAME_SIZE, "cpu%d", job_cpus[cpu_idx]);
 +  while (!all_cpus_found &&
 +         (fscanf(fstat, "%s %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu\n",
 +                 cur_cpu_name, &xcpu_time->user, &xcpu_time->nice,
@@ -685,7 +692,7 @@ index 0000000..305e081
 +      cpu_idx++;
 +      if (cpu_idx >= job_nb_cpus)
 +        all_cpus_found = 1;
-+      ssnprintf(searched_cpu_name, MAX_CPU_NAME_SIZE, "cpu%d", job_cpus[cpu_idx]);
++      snprintf(searched_cpu_name, MAX_CPU_NAME_SIZE, "cpu%d", job_cpus[cpu_idx]);
 +    }
 +  }
 +  fclose(fstat);
@@ -755,7 +762,7 @@ index 0000000..305e081
 +  for(i=0; i<nb_pids; i++) {
 +    pid = pids[i];
 +    if(!slurmd_pid_is_thread (pid, threads, nb_threads)) {
-+      ssnprintf(task_dir_fpath, PATH_MAX, "/proc/%d/task", pid);
++      snprintf(task_dir_fpath, PATH_MAX, "/proc/%d/task", pid);
 +
 +      dir = opendir(task_dir_fpath);
 +
@@ -880,7 +887,7 @@ index 0000000..305e081
 +
 +    /* check if ent name starts with 'job_' */
 +    if (strncmp(dir_ent->d_name, "tasks", 6) == 0) {
-+      ssnprintf(tasks_fpath, sizeof(tasks_fpath), "%s/%s",
++      snprintf(tasks_fpath, sizeof(tasks_fpath), "%s/%s",
 +                step_cpuset_mnt_pt, dir_ent->d_name);
 +      xresult->rss = 0;
 +      xresult->pss = 0;
@@ -921,7 +928,7 @@ index 0000000..305e081
 +  bzero(cpus_fpath, sizeof(cpus_fpath));
 +  bzero(cpus_str, sizeof(cpus_str));
 +
-+  ssnprintf(cpus_fpath, sizeof(cpus_fpath), "%s/%s", cpuset_fpath, "cpuset.cpus");
++  snprintf(cpus_fpath, sizeof(cpus_fpath), "%s/%s", cpuset_fpath, "cpuset.cpus");
 +  cpus_fh = fopen(cpus_fpath, "r");
 +
 +  if (cpus_fh == NULL) {
@@ -1059,7 +1066,7 @@ index 0000000..305e081
 +      break;
 +
 +    if (strncmp(dir_ent->d_name, "step_", 5) == 0) {
-+        ssnprintf(step_cpuset_mnt_pt, sizeof(step_cpuset_mnt_pt), "%s/%s",
++        snprintf(step_cpuset_mnt_pt, sizeof(step_cpuset_mnt_pt), "%s/%s",
 +                  job_cpuset_mnt_pt, dir_ent->d_name);
 +        xmemory->pss = 0;
 +        xmemory->rss = 0;
@@ -1125,7 +1132,7 @@ index 0000000..305e081
 +      strncpy(job_number_str, job_number_addr, strlen(job_number_addr));
 +      job_number = slurmd_str_to_long(job_number_str);
 +      if (job_number != -1) {
-+        ssnprintf(job_cpuset_mnt_pt, sizeof(job_cpuset_mnt_pt), "%s/%s",
++        snprintf(job_cpuset_mnt_pt, sizeof(job_cpuset_mnt_pt), "%s/%s",
 +                  uid_cpuset_mnt_pt, dir_ent->d_name);
 +        if(!slurmd_browse_job_cpuset(job_cpuset_mnt_pt, job_number))
 +          ret = 0;
@@ -1155,7 +1162,7 @@ index 0000000..305e081
 +
 +  /* Try to open cpuset/slurm in cgroups */
 +  bzero(slurm_cpuset_mnt_pt, PATH_MAX);
-+  ssnprintf(slurm_cpuset_mnt_pt, sizeof(slurm_cpuset_mnt_pt), "%s/%s",
++  snprintf(slurm_cpuset_mnt_pt, sizeof(slurm_cpuset_mnt_pt), "%s/%s",
 +            cgroup_mnt_pt, "cpuset/slurm");
 +
 +  dir = opendir(slurm_cpuset_mnt_pt);
@@ -1174,7 +1181,7 @@ index 0000000..305e081
 +    }
 +
 +    bzero(slurm_cpuset_mnt_pt, PATH_MAX);
-+    ssnprintf(slurm_cpuset_mnt_pt, sizeof(slurm_cpuset_mnt_pt), "%s/%s_%s",
++    snprintf(slurm_cpuset_mnt_pt, sizeof(slurm_cpuset_mnt_pt), "%s/%s_%s",
 +              cgroup_mnt_pt, "cpuset/slurm", node_name);
 +    dir = opendir(slurm_cpuset_mnt_pt);
 +  }
@@ -1199,7 +1206,7 @@ index 0000000..305e081
 +
 +    /* check if dir_ent name starts with 'uid_' */
 +    if (strncmp(dir_ent->d_name, "uid_", 4) == 0) {
-+      ssnprintf(uid_cpuset_mnt_pt, sizeof(uid_cpuset_mnt_pt), "%s/%s",
++      snprintf(uid_cpuset_mnt_pt, sizeof(uid_cpuset_mnt_pt), "%s/%s",
 +                slurm_cpuset_mnt_pt, dir_ent->d_name);
 +      if(slurmd_browse_uid_cpuset(uid_cpuset_mnt_pt))
 +        ret = -1;
@@ -1265,3 +1272,6 @@ index 0000000..305e081
 +  plugin_register_config("slurmd", slurmd_config, config_keys, config_keys_num);
 +  plugin_register_read("slurmd", slurmd_read);
 +} /* void module_register */
+-- 
+2.20.1
+

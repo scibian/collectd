@@ -1,8 +1,10 @@
 Author: Sebastian Harl <sh@tokkee.org>
 Description: Set the path of rrd_filter.px to /usr/lib/collectd/utils/.
---- a/contrib/migrate-3-4.px
-+++ b/contrib/migrate-3-4.px
-@@ -167,7 +167,7 @@
+Index: collectd/contrib/migrate-3-4.px
+===================================================================
+--- collectd.orig/contrib/migrate-3-4.px
++++ collectd/contrib/migrate-3-4.px
+@@ -167,7 +167,7 @@ for (@Files)
  			my $src_ds = $src_dses->[$i];
  			$dest->{'type_instance'} = $type_instances->[$i];
  			$dest_filename = get_filename ($dest);
@@ -11,7 +13,7 @@ Description: Set the path of rrd_filter.px to /usr/lib/collectd/utils/.
  		}
  	}
  	else
-@@ -363,19 +363,19 @@
+@@ -363,19 +363,19 @@ sub special_disk
  		$OutDirs{$dest_directory} = 1;
  	}
  
@@ -35,9 +37,11 @@ Description: Set the path of rrd_filter.px to /usr/lib/collectd/utils/.
  }
  
  sub exit_usage
---- a/contrib/migrate-4-5.px
-+++ b/contrib/migrate-4-5.px
-@@ -32,8 +32,8 @@
+Index: collectd/contrib/migrate-4-5.px
+===================================================================
+--- collectd.orig/contrib/migrate-4-5.px
++++ collectd/contrib/migrate-4-5.px
+@@ -32,8 +32,8 @@ use Data::Dumper ();
  use File::Basename ('dirname');
  
  our $InDir = '/var/lib/collectd';

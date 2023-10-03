@@ -1,16 +1,42 @@
-#! /bin/sh /usr/share/dpatch/dpatch-run
-## slurmctld-plugin.dpatch by Rémi Palancher <remi@rezib.org>
-##
-## DP: plugin: slurmctld plugin
+From 957b8aa61eb0d519f7136c58663e8bcd3cee9c05 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?R=C3=A9mi=20Palancher?= <remi-externe.palancher@edf.fr>
+Date: Thu, 7 Apr 2022 11:44:01 +0200
+Subject: [PATCH 3/4] slurmctld plugin
 
-@DPATCH@
+---
+ Makefile.am           |   8 +++
+ configure.ac          |  63 +++++++++++++++++++++++
+ src/collectd.conf.in  |   3 ++
+ src/collectd.conf.pod |  15 ++++++
+ src/slurmctld.c       | 116 ++++++++++++++++++++++++++++++++++++++++++
+ 5 files changed, 205 insertions(+)
+ create mode 100644 src/slurmctld.c
 
+diff --git a/Makefile.am b/Makefile.am
+index 4b63041..06fb1a3 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -1697,6 +1697,14 @@ sigrok_la_LDFLAGS = $(PLUGIN_LDFLAGS)
+ sigrok_la_LIBADD = $(LIBSIGROK_LIBS)
+ endif
+ 
++if BUILD_PLUGIN_SLURMCTLD
++pkglib_LTLIBRARIES += slurmctld.la
++slurmctld_la_SOURCES = src/slurmctld.c
++slurmctld_la_CFLAGS = $(AM_CFLAGS) $(BUILD_WITH_LIBSLURM_CFLAGS)
++slurmctld_la_LDFLAGS = $(PLUGIN_LDFLAGS) $(BUILD_WITH_LIBSLURM_LDFLAGS)
++slurmctld_la_LIBADD = $(BUILD_WITH_LIBSLURM_LIBS)
++endif
++
+ if BUILD_PLUGIN_SLURMD
+ pkglib_LTLIBRARIES += slurmd.la
+ slurmd_la_SOURCES = src/slurmd.c
 diff --git a/configure.ac b/configure.ac
-index e1b477a..c00a6e8 100644
+index 62de854..530dd42 100644
 --- a/configure.ac
 +++ b/configure.ac
-@@ -4835,6 +4835,66 @@ fi
- )
+@@ -5310,6 +5310,66 @@ fi
+ AM_CONDITIONAL(BUILD_WITH_LIBSSL, test "x$with_libssl" = "xyes")
  # }}}
  
 +# --with-libslurm {{{
@@ -74,25 +100,25 @@ index e1b477a..c00a6e8 100644
 +# }}}
 +
  # --with-libstatgrab {{{
- with_libstatgrab_cflags=""
- with_libstatgrab_ldflags=""
-@@ -6472,6 +6532,7 @@ AC_PLUGIN([rrdtool],             [$with_librrd],            [RRDTool output plugin])
- AC_PLUGIN([sensors],             [$with_libsensors],        [lm_sensors statistics])
- AC_PLUGIN([serial],              [$plugin_serial],          [serial port traffic])
- AC_PLUGIN([sigrok],              [$with_libsigrok],         [sigrok acquisition sources])
-+AC_PLUGIN([slurmctld],           [$with_libslurm],          [Slurmctld jobs statistics])
- AC_PLUGIN([slurmd],              [yes],                     [Slurmd jobs statistics])
- AC_PLUGIN([smart],               [$plugin_smart],           [SMART statistics])
- AC_PLUGIN([snmp],                [$with_libnetsnmp],        [SNMP querying plugin])
-@@ -6785,6 +6846,7 @@ AC_MSG_RESULT([    librouteros . . . . . $with_librouteros])
+ AC_ARG_WITH([libstatgrab],
+   [AS_HELP_STRING([--with-libstatgrab@<:@=PREFIX@:>@], [Path to libstatgrab.])],
+@@ -6890,6 +6950,7 @@ AC_PLUGIN([rrdtool],             [$with_librrd],              [RRDTool output pl
+ AC_PLUGIN([sensors],             [$with_libsensors],          [lm_sensors statistics])
+ AC_PLUGIN([serial],              [$plugin_serial],            [serial port traffic])
+ AC_PLUGIN([sigrok],              [$with_libsigrok],           [sigrok acquisition sources])
++AC_PLUGIN([slurmctld],           [$with_libslurm],            [Slurmctld jobs statistics])
+ AC_PLUGIN([slurmd],              [yes],                       [Slurmd jobs statistics])
+ AC_PLUGIN([smart],               [$plugin_smart],             [SMART statistics])
+ AC_PLUGIN([snmp],                [$with_libnetsnmp],          [SNMP querying plugin])
+@@ -7184,6 +7245,7 @@ AC_MSG_RESULT([    librouteros . . . . . $with_librouteros])
  AC_MSG_RESULT([    librrd  . . . . . . . $with_librrd])
  AC_MSG_RESULT([    libsensors  . . . . . $with_libsensors])
  AC_MSG_RESULT([    libsigrok   . . . . . $with_libsigrok])
 +AC_MSG_RESULT([    libslurm  . . . . . . $with_libslurm])
+ AC_MSG_RESULT([    libssl  . . . . . . . $with_libssl])
  AC_MSG_RESULT([    libstatgrab . . . . . $with_libstatgrab])
  AC_MSG_RESULT([    libtokyotyrant  . . . $with_libtokyotyrant])
- AC_MSG_RESULT([    libudev . . . . . . . $with_libudev])
-@@ -6909,6 +6971,7 @@ AC_MSG_RESULT([    rrdtool . . . . . . . $enable_rrdtool])
+@@ -7317,6 +7379,7 @@ AC_MSG_RESULT([    rrdtool . . . . . . . $enable_rrdtool])
  AC_MSG_RESULT([    sensors . . . . . . . $enable_sensors])
  AC_MSG_RESULT([    serial  . . . . . . . $enable_serial])
  AC_MSG_RESULT([    sigrok  . . . . . . . $enable_sigrok])
@@ -100,30 +126,11 @@ index e1b477a..c00a6e8 100644
  AC_MSG_RESULT([    slurmd  . . . . . . . $enable_slurmd])
  AC_MSG_RESULT([    smart . . . . . . . . $enable_smart])
  AC_MSG_RESULT([    snmp  . . . . . . . . $enable_snmp])
-diff --git a/src/Makefile.am b/src/Makefile.am
-index 076f029..0b2a511 100644
---- a/src/Makefile.am
-+++ b/src/Makefile.am
-@@ -1049,6 +1049,14 @@ sigrok_la_LDFLAGS = $(PLUGIN_LDFLAGS)
- sigrok_la_LIBADD = $(LIBSIGROK_LIBS)
- endif
- 
-+if BUILD_PLUGIN_SLURMCTLD
-+pkglib_LTLIBRARIES += slurmctld.la
-+slurmctld_la_SOURCES = slurmctld.c
-+slurmctld_la_CFLAGS = $(AM_CFLAGS) $(BUILD_WITH_LIBSLURM_CFLAGS)
-+slurmctld_la_LDFLAGS = $(PLUGIN_LDFLAGS) $(BUILD_WITH_LIBSLURM_LDFLAGS)
-+slurmctld_la_LIBADD = $(BUILD_WITH_LIBSLURM_LIBS)
-+endif
-+
- if BUILD_PLUGIN_SLURMD
- pkglib_LTLIBRARIES += slurmd.la
- slurmd_la_SOURCES = slurmd.c
 diff --git a/src/collectd.conf.in b/src/collectd.conf.in
-index f466db2..e3ef284 100644
+index 8dbe66f..b7b971a 100644
 --- a/src/collectd.conf.in
 +++ b/src/collectd.conf.in
-@@ -182,6 +182,9 @@
+@@ -191,6 +191,9 @@
  #@BUILD_PLUGIN_SENSORS_TRUE@LoadPlugin sensors
  #@BUILD_PLUGIN_SERIAL_TRUE@LoadPlugin serial
  #@BUILD_PLUGIN_SIGROK_TRUE@LoadPlugin sigrok
@@ -134,10 +141,10 @@ index f466db2..e3ef284 100644
  #@BUILD_PLUGIN_SMART_TRUE@LoadPlugin smart
  #@BUILD_PLUGIN_SNMP_TRUE@LoadPlugin snmp
 diff --git a/src/collectd.conf.pod b/src/collectd.conf.pod
-index 81c01f1..e8733db 100644
+index 575e331..5aaa0d8 100644
 --- a/src/collectd.conf.pod
 +++ b/src/collectd.conf.pod
-@@ -6897,6 +6897,21 @@ boot.
+@@ -8031,6 +8031,21 @@ Default: B<true>
  
  =back
  
@@ -161,10 +168,10 @@ index 81c01f1..e8733db 100644
  Since the configuration of the C<snmp plugin> is a little more complicated than
 diff --git a/src/slurmctld.c b/src/slurmctld.c
 new file mode 100644
-index 0000000..774dd36
+index 0000000..f1e5180
 --- /dev/null
 +++ b/src/slurmctld.c
-@@ -0,0 +1,99 @@
+@@ -0,0 +1,116 @@
 +/**
 + * collectd - src/slurmctld.c
 + * Copyright (C) 2015       Rémi Palancher
@@ -187,7 +194,7 @@ index 0000000..774dd36
 + **/
 +
 +#include "collectd.h"
-+#include "common.h"
++#include "utils/common/common.h"
 +#include "plugin.h"
 +#include "configfile.h"
 +
@@ -206,7 +213,7 @@ index 0000000..774dd36
 +
 +  sstrncpy (vl.host, hostname_g, sizeof (vl.host));
 +  sstrncpy (vl.plugin, "slurmctld", sizeof (vl.plugin));
-+  ssnprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "job_%lu", job_number);
++  snprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "job_%lu", job_number);
 +  sstrncpy (vl.type, "count", sizeof(vl.type));
 +  sstrncpy (vl.type_instance, type_instance, sizeof(vl.type_instance));
 +
@@ -260,7 +267,27 @@ index 0000000..774dd36
 +  return (0);
 +} /* int slurmctld_read */
 +
++static int slurmctld_init (void)
++{
++  /* Initialize slurm library with configuration file at default path */
++  slurm_init(NULL);
++  return (0);
++} /* int slurmctld_init */
++
++static int slurmctld_shutdown (void)
++{
++  /* Cleanup slurm library internal structures */
++  slurm_fini();
++  return (0);
++} /* int slurmctld_shutdown */
++
 +void module_register (void)
 +{
++
++  plugin_register_init("slurmctld", slurmctld_init);
 +  plugin_register_read("slurmctld", slurmctld_read);
++  plugin_register_shutdown("slurmctld", slurmctld_shutdown);
 +} /* void module_register */
+-- 
+2.20.1
+

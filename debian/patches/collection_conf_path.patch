@@ -1,8 +1,10 @@
 Author: Sebastian Harl <sh@tokkee.org>
 Description: Set the path of collection.conf to /etc/collectd/.
---- a/contrib/collection.cgi
-+++ b/contrib/collection.cgi
-@@ -32,7 +32,7 @@
+Index: collectd/contrib/collection.cgi
+===================================================================
+--- collectd.orig/contrib/collection.cgi
++++ collectd/contrib/collection.cgi
+@@ -32,7 +32,7 @@ use URI::Escape ('uri_escape');
  use RRDs ();
  use Data::Dumper ();
  

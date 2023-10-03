@@ -1,8 +1,10 @@
 Description: Use paths for nagios-nrpe-server & monitoring-plugins Debian packages.
 Author: Bas Couwenberg <sebastic@debian.org>
 
---- a/contrib/exec-nagios.conf
-+++ b/contrib/exec-nagios.conf
+Index: collectd/contrib/exec-nagios.conf
+===================================================================
+--- collectd.orig/contrib/exec-nagios.conf
++++ collectd/contrib/exec-nagios.conf
 @@ -1,15 +1,15 @@
  # Run `perldoc exec-nagios.px' for details on this config file.
  

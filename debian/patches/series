@@ -2,14 +2,11 @@ rrd_filter_path.patch
 collection_conf_path.patch
 myplugin_includes.patch
 nagios-debian-paths.patch
-mqtt_resource_leak.patch
-mqtt_invalid_symbols.patch
-dpdkstat_goto_label.patch
-drop_lssl_lcrypto_from_linking.patch
 delay_first_read.patch
 fix_version_gen.patch
 slurmd_plugin.patch
 slurmctld_plugin.patch
 exec_cuda_script.patch
-cve-2017-7401.patch
-cve-2017-16820.patch
+cgi-param-in-list-context.patch
+fix-nut-integer-sizes
+python311_ftbfs_fix.patch
