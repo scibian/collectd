@@ -1,4 +1,4 @@
-collectd (5.9.2-1sci9u1) UNRELEASED; urgency=medium
+collectd (5.9.2-1sci9u1) scibian9; urgency=medium
 
   * New upstream release 5.9.2
   * Compiled against python3
