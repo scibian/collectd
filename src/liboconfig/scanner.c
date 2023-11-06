@@ -1,5 +1,5 @@
 
-#line 3 "src/liboconfig/scanner.c"
+#line 2 "src/liboconfig/scanner.c"
 
 #define  YY_INT_ALIGNED short int
 
@@ -3364,7 +3364,7 @@ static void ml_append (char *);
 #define yyterminate() \
 	do { free (ml_buffer); ml_buffer = NULL; ml_pos = 0; ml_len = 0; \
 		return YY_NULL; } while (0)
-#line 3368 "src/liboconfig/scanner.c"
+#line 3367 "src/liboconfig/scanner.c"
 #define YY_NO_INPUT 1
 
 /* IPv6 address according to http://www.ietf.org/rfc/rfc2373.txt
@@ -3372,7 +3372,7 @@ static void ml_append (char *);
  * for the right prefix (::0:<v4> or ::FFFF:<v4>) because there are too many
  * ways to correctly represent the zero bytes. It's up to the user to check
  * for valid addresses. */
-#line 3376 "src/liboconfig/scanner.c"
+#line 3375 "src/liboconfig/scanner.c"
 
 #define INITIAL 0
 #define ML 1
@@ -3593,7 +3593,7 @@ YY_DECL
 	{
 #line 96 "src/liboconfig/scanner.l"
 
-#line 3597 "src/liboconfig/scanner.c"
+#line 3596 "src/liboconfig/scanner.c"
 
 	while ( /*CONSTCOND*/1 )		/* loops until end-of-file is reached */
 		{
@@ -3790,7 +3790,7 @@ YY_RULE_SETUP
 #line 152 "src/liboconfig/scanner.l"
 ECHO;
 	YY_BREAK
-#line 3794 "src/liboconfig/scanner.c"
+#line 3793 "src/liboconfig/scanner.c"
 case YY_STATE_EOF(INITIAL):
 case YY_STATE_EOF(ML):
 	yyterminate();
