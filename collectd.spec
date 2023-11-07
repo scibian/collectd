@@ -3,12 +3,12 @@
 
 Summary: Statistics collection daemon for filling RRD files
 Name: collectd
-Version: 5.9.0
-Release: 5%{?dist}_2.edf
+Version: 5.9.2
+Release: 1%{?dist}_2.edf
 License: GPLv2
 URL: https://collectd.org/
 
-Source: %{name}-%{version}.tar.gz
+Source: collectd-5.9.2.tar.gz
 Source1: collectd-httpd.conf
 Source2: collectd.service
 Source91: apache.conf
@@ -20,7 +20,7 @@ Source96: snmp.conf
 Source97: rrdtool.conf
 Source98: onewire.conf
 
-Patch0: %{name}-include-collectd.d.patch
+Patch0: collectd-include-collectd.d.patch
 Patch1: 0001-Delay-first-read.patch
 Patch2: 0002-plugin-slurmd.patch
 Patch3: 0003-slurmctld-plugin.patch
@@ -128,13 +128,13 @@ BuildRequires: libxml2-devel
 This plugin retrieves XML data via curl.
 
 
-%package dbi
-Summary:       DBI plugin for collectd
-Requires:      %{name}%{?_isa} = %{version}-%{release}
-BuildRequires: libdbi-devel
-%description dbi
-This plugin uses the dbi library to connect to various databases,
-execute SQL statements and read back the results.
+#%package dbi
+#Summary:       DBI plugin for collectd
+#Requires:      %{name}%{?_isa} = %{version}-%{release}
+#BuildRequires: libdbi-devel
+#%description dbi
+#This plugin uses the dbi library to connect to various databases,
+#execute SQL statements and read back the results.
 
 
 %package disk
@@ -461,12 +461,12 @@ BuildRequires: librdkafka-devel
 This sends values to Kafka, a distributed messaging system.
 
 
-%package write_mongodb
-Summary:       MongoDB output plugin for collectd
-Requires:      %{name}%{?_isa} = %{version}-%{release}
-BuildRequires: mongo-c-driver-devel
-%description write_mongodb
-This plugin sends values to MongoDB.
+#%package write_mongodb
+#Summary:       MongoDB output plugin for collectd
+#Requires:      %{name}%{?_isa} = %{version}-%{release}
+#BuildRequires: mongo-c-driver-devel
+#%description write_mongodb
+#This plugin sends values to MongoDB.
 
 
 %package write_prometheus
@@ -478,12 +478,12 @@ This plugin exposes collected values using an embedded HTTP
 server, turning the collectd daemon into a Prometheus exporter.
 
 
-%package write_riemann
-Summary:       Riemann output plugin for collectd
-Requires:      %{name}%{?_isa} = %{version}-%{release}
-BuildRequires: riemann-c-client-devel
-%description write_riemann
-This plugin can send data to Riemann.
+#%package write_riemann
+#Summary:       Riemann output plugin for collectd
+#Requires:      %{name}%{?_isa} = %{version}-%{release}
+#BuildRequires: riemann-c-client-devel
+#%description write_riemann
+#This plugin can send data to Riemann.
 
 
 %package write_sensu
@@ -564,6 +564,9 @@ autoreconf
     --with-python=%{_bindir}/python3 \
     --with-perl-bindings=INSTALLDIRS=vendor \
     --disable-werror \
+    --disable-write_mongodb \
+    --disable-write_riemann \
+    --disable-dbi \
     AR_FLAGS="-cr"
 
 make %{?_smp_mflags}
@@ -832,8 +835,8 @@ make check
 %{_libdir}/collectd/disk.so
 
 
-%files dbi
-%{_libdir}/collectd/dbi.so
+#%files dbi
+#%{_libdir}/collectd/dbi.so
 
 
 %files dns
@@ -1008,16 +1011,16 @@ make check
 %{_libdir}/%{name}/write_kafka.so
 
 
-%files write_mongodb
-%{_libdir}/%{name}/write_mongodb.so
+#%files write_mongodb
+#%{_libdir}/%{name}/write_mongodb.so
 
 
 %files write_prometheus
 %{_libdir}/collectd/write_prometheus.so
 
 
-%files write_riemann
-%{_libdir}/collectd/write_riemann.so
+#%files write_riemann
+#%{_libdir}/collectd/write_riemann.so
 
 
 %files write_sensu
