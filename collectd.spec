@@ -33,7 +33,7 @@ BuildRequires: perl-interpreter
 BuildRequires: perl(ExtUtils::MakeMaker)
 BuildRequires: perl(ExtUtils::Embed)
 BuildRequires: libgcrypt-devel
-BuildRequires: slurm-devel
+BuildRequires: slurm-devel >= 23.11.4
 Requires(post):   systemd
 Requires(preun):  systemd
 Requires(postun): systemd
@@ -1037,6 +1037,9 @@ make check
 
 
 %changelog
+* Fri May 10 2024 Kwame Amedodji <kwame-externe.amedodji@edf.fr> - 5.9.2-1.el8_3.edf
+- bump slurm-devel to version 23.11.4
+
 * Thu Apr 14 2022 Rémi Palancher <remi-externe.palancher@edf.fr> - 5.9.0-5.el8_2.edf
 - Slurm patches modified for new collectd and libslurm APIs
 - Add patch for exec-cuda.sh
