@@ -33,7 +33,7 @@ BuildRequires: perl-interpreter
 BuildRequires: perl(ExtUtils::MakeMaker)
 BuildRequires: perl(ExtUtils::Embed)
 BuildRequires: libgcrypt-devel
-BuildRequires: slurm-devel >= 23.11.4
+BuildRequires: slurm-devel >= 23.11.1
 Requires(post):   systemd
 Requires(preun):  systemd
 Requires(postun): systemd
@@ -1037,6 +1037,9 @@ make check
 
 
 %changelog
+* Fri May 10 2024 Kwame Amedodji <kwame-externe.amedodji@edf.fr> - 5.9.2-1.el8_4.edf
+- fix slurm-devel to version 23.11.1
+
 * Fri May 10 2024 Kwame Amedodji <kwame-externe.amedodji@edf.fr> - 5.9.2-1.el8_3.edf
 - bump slurm-devel to version 23.11.4
 
