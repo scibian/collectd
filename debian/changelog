@@ -1,3 +1,14 @@
+collectd (5.9.2-1sci9u5) scibian9; urgency=medium
+
+  [ Kwame Amedodji ]
+  * bump libslurm-dev to 23.11.4
+  * Release 5.9.2-1sci9u4
+
+  [ Thomas HAMEL ]
+  * Bump to slurm 24.05
+
+ -- Thomas HAMEL <thomas-t.hamel@edf.fr>  Fri, 28 Jun 2024 17:24:55 +0200
+
 collectd (5.9.2-1sci9u4) scibian9; urgency=medium
 
   * bump libslurm-dev to 23.11.4
