@@ -4,7 +4,7 @@
 Summary: Statistics collection daemon for filling RRD files
 Name: collectd
 Version: 5.9.2
-Release: 1%{?dist}_4.edf
+Release: 1%{?dist}_5.edf
 License: GPLv2
 URL: https://collectd.org/
 
@@ -33,7 +33,7 @@ BuildRequires: perl-interpreter
 BuildRequires: perl(ExtUtils::MakeMaker)
 BuildRequires: perl(ExtUtils::Embed)
 BuildRequires: libgcrypt-devel
-BuildRequires: slurm-devel >= 23.11.1
+BuildRequires: slurm-devel >= 24.05
 Requires(post):   systemd
 Requires(preun):  systemd
 Requires(postun): systemd
@@ -1037,6 +1037,9 @@ make check
 
 
 %changelog
+* Thu Jul 25 2024 Thomas HAMEL <thomas-t.hamel@edf.fr> - 5.9.2-1.el8_5.edf
+- fix slurm-devel to version 24.05
+
 * Fri May 10 2024 Kwame Amedodji <kwame-externe.amedodji@edf.fr> - 5.9.2-1.el8_4.edf
 - fix slurm-devel to version 23.11.1
 
