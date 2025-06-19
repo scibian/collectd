@@ -4,13 +4,13 @@ Date: Tue, 12 Apr 2022 15:35:33 +0200
 Subject: [PATCH 4/4] exec-cuda.sh script
 
 ---
- contrib/exec-cuda.sh | 32 ++++++++++++++++++++++++++++++++
- 1 file changed, 32 insertions(+)
+contrib/exec-cuda.sh | 54 ++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 54 insertions(+)
  create mode 100644 contrib/exec-cuda.sh
 
 diff --git a/contrib/exec-cuda.sh b/contrib/exec-cuda.sh
 new file mode 100644
-index 0000000..f96cdac
+index 0000000..c5ca586
 --- /dev/null
 +++ b/contrib/exec-cuda.sh
 @@ -0,0 +1,32 @@
@@ -24,28 +24,48 @@ index 0000000..f96cdac
 +#	["fan_speed"]=percent
 +#	["pstate"]=absolute
 +#	["memory_used"]=memory
-+#	["memory_free"]=memory
++	["memory_free"]=memory
 +	["utilization_gpu"]=percent
 +	["utilization_memory"]=percent
-+#	["power_draw"]=power
++	["power_draw"]=power
 +)
 +
 +HOSTNAME="${COLLECTD_HOSTNAME:-$(hostname --fqdn)}"
 +INTERVAL="${COLLECTD_INTERVAL:-10}"
++LIST_UUIDS=$(nvidia-smi -L | awk '{ sub(/:/, "", $2); print $2 }')
 +
-+for parameter in "${!config[@]}"
++for uuid in $LIST_UUIDS
 +do
-+	query_string="${parameter//_/.},"
-+	gpus_state=$(nvidia-smi --query-gpu="${query_string}" --format=csv,noheader,nounits)
++	PIDS=$(nvidia-smi -q -i ${uuid} | awk '/Process/ && /ID/ {s=length(s)?s"|"$4:$4} END {print s}')
++	jobid=$(scontrol listpids 2> /dev/null | awk '/'"$PIDS"'/ { tab[$2] } END{ for (i in tab) s=length(s)?s" "i:i; print s}')
++	[ -z $jobid ] && JOBID=0 || JOBID=$jobid
++	gpusjobs[$uuid]=$JOBID
++done
 +
-+	i=0
-+	while read line
++for u in ${!gpusjobs[@]}
++do
++	for j in ${gpusjobs[$u]}
 +	do
-+		i=$((i+$line))
-+	done <<< "${gpus_state// }"
++		jobsgpus[$j]+=' '$u
++	done
++done
 +
-+	echo "PUTVAL ${HOSTNAME}/cuda/${config[$parameter]}-${parameter} interval=$INTERVAL N:$i"
++for jobid in ${!jobsgpus[@]}
++do
++	[ $jobid = 0 ] && JOBID='none' || JOBID=$jobid
++	for parameter in "${!config[@]}"
++	do
++		query_string="${parameter//_/.},"
++		i=0
++		for uuid in ${jobsgpus[$jobid]}
++		do
++			gpus_state=$(nvidia-smi -i ${uuid} --query-gpu="${query_string}" --format=csv,noheader,nounits)
++			i=$(awk "BEGIN {print $i+${gpus_state// }}")
++		done
++		echo "PUTVAL ${HOSTNAME}/cuda-job_$JOBID/${config[$parameter]}-${parameter} interval=$INTERVAL N:$i"
++	done
++	g=$(echo ${jobsgpus[$jobid]} | wc -w)
++	echo "PUTVAL ${HOSTNAME}/cuda-job_$JOBID/absolute-used_gpus interval=$INTERVAL N:$g"
 +done
 -- 
 2.20.1
-
