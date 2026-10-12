@@ -8,8 +8,8 @@ Subject: [PATCH 2/4] plugin slurmd
  configure.ac          |    2 +
  src/collectd.conf.in  |    6 +
  src/collectd.conf.pod |   66 +++
- src/slurmd.c          | 1116 +++++++++++++++++++++++++++++++++++++++++
- 5 files changed, 1196 insertions(+)
+ src/slurmd.c          | 1134 +++++++++++++++++++++++++++++++++++++++++
+ 5 files changed, 1214 insertions(+)
  create mode 100644 src/slurmd.c
 
 diff --git a/Makefile.am b/Makefile.am
@@ -155,7 +155,7 @@ new file mode 100644
 index 0000000..3432297
 --- /dev/null
 +++ b/src/slurmd.c
-@@ -0,0 +1,1116 @@
+@@ -0,0 +1,1134 @@
 +/**
 + * collectd - src/slurmd.c
 + * Copyright (C) 2015       Rémi Palancher
@@ -892,6 +892,24 @@ index 0000000..3432297
 +      xresult->rss = 0;
 +      xresult->pss = 0;
 +      status = slurmd_get_tasks_memory(tasks_fpath, xresult);
++      if (status < 0) {
++        closedir(dir);
++        return -1;
++      }
++      else {
++        result->pss += xresult->pss;
++        result->rss += xresult->rss;
++      }
++    }
++    /* Since Slurm 24.11.3, a task's cpuset can be placed one level deeper
++     * in a task_<N> subdirectory instead of the step's "tasks" file.
++     * Recurse to find it */
++    else if (strncmp(dir_ent->d_name, "task_", 5) == 0) {
++      snprintf(tasks_fpath, sizeof(tasks_fpath), "%s/%s",
++                step_cpuset_mnt_pt, dir_ent->d_name);
++      xresult->rss = 0;
++      xresult->pss = 0;
++      status = slurmd_get_jobstep_memory(tasks_fpath, xresult);
 +      if (status < 0) {
 +        closedir(dir);
 +        return -1;
