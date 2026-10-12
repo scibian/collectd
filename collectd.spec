@@ -4,7 +4,7 @@
 Summary: Statistics collection daemon for filling RRD files
 Name: collectd
 Version: 5.9.2
-Release: 1%{?dist}_7.edf
+Release: 1%{?dist}_8.edf
 License: GPLv2
 URL: https://collectd.org/
 
@@ -1037,6 +1037,9 @@ make check
 
 
 %changelog
+* Mon Oct 12 2026 Farid CHABANE <farid-externe.chabane@edf.fr> - 5.9.2-1.el8_8.edf
+- fix job memory reporting
+
 * Thu Nov 06 2025 Mathieu Chouquet-Stringer <mathieu-externe.chouquet-stringer@edf.fr> - 5.9.2-1.el8_7.edf
 - rebuild for slurm 25.05
 
